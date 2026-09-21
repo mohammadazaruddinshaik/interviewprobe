@@ -1,0 +1,64 @@
+# Render Blueprint for the InterviewProbe backend.
+#
+# IMPORTANT — this file does NOT take effect automatically. Render does not
+# retroactively attach a render.yaml to a service that was already created
+# manually in the dashboard just because it appears in the repo. Adopting it
+# requires an explicit "New +" -> "Blueprint" action (or a "Sync" on an
+# existing Blueprint) in the Render dashboard, and before doing that you
+# should confirm the `name` below actually matches the existing backend
+# service — syncing a Blueprint whose name doesn't match an existing service
+# creates a NEW service rather than adopting the current one. Until that
+# explicit dashboard step happens, this file is documentation/reproducibility
+# only and changes nothing about what is currently running.
+#
+# Every environment variable below that already holds a real value in the
+# live service (all credentials, and DATABASE_URL/REDIS_URL, which Render
+# manages itself when the DB/Redis were provisioned there) is declared with
+# `sync: false`, which tells Render "this is set manually in the dashboard,
+# never overwrite it from this file." Nothing here can push a value over an
+# existing secret.
+
+services:
+  - type: web
+    name: interviewprobe-backend
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    # alembic upgrade head runs before uvicorn starts on every deploy, so a
+    # new migration is always applied before the new code that depends on it
+    # goes live — see Task 44's P0 finding this file exists to close.
+    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      # --- already-configured production secrets: never synced from here ---
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: LLM_PROVIDER
+        sync: false
+      - key: LLM_MODEL
+        sync: false
+      - key: LLM_API_KEY
+        sync: false
+      - key: QDRANT_URL
+        sync: false
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: EMBEDDING_PROVIDER
+        sync: false
+      - key: EMBEDDING_MODEL
+        sync: false
+      - key: EMBEDDING_API_KEY
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      # --- voice providers: unset until Azure/Deepgram are configured
+      #     (a separate, later task per Task 45's scope) ---
+      - key: AZURE_SPEECH_KEY
+        sync: false
+      - key: AZURE_SPEECH_REGION
+        sync: false
+      - key: DEEPGRAM_API_KEY
+        sync: false
