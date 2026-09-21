@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ApiError } from '../api/client.js'
 import { getInterview, startInterview, submitInterviewAnswer } from '../api/interviews.js'
@@ -8,7 +8,10 @@ import InterviewError from '../components/interview/InterviewError.jsx'
 import InterviewHeader from '../components/interview/InterviewHeader.jsx'
 import InterviewLoading from '../components/interview/InterviewLoading.jsx'
 import QuestionPanel from '../components/interview/QuestionPanel.jsx'
+import VoiceInterviewView from '../components/interview/voice/VoiceInterviewView.jsx'
+import VoiceModeToggle from '../components/interview/VoiceModeToggle.jsx'
 import { DIFFICULTY_LABELS, ROLE_LABELS, TOPIC_LABELS } from '../data/interviewCatalog.js'
+import { useVoiceInterviewSession } from '../voice/useVoiceInterviewSession.js'
 
 const GENERIC_LOAD_ERROR = 'Something went wrong while loading your interview.'
 const GENERIC_SUBMIT_ERROR = 'Something went wrong while submitting your answer.'
@@ -33,6 +36,26 @@ function Interview() {
   // text would be rejected as a reused-key conflict).
   const idempotencyRef = useRef({ key: null, answer: null })
   const questionHeadingRef = useRef(null)
+
+  // Voice only ever appends recognized text into the same value typing
+  // produces — it never submits the answer itself, so the result behaves
+  // exactly like manually typed text from this point on. Wrapped in
+  // useCallback so the session hook's internal delivery effect (which reads
+  // it via a ref) never sees a "changed" callback on every render.
+  const handleVoiceTranscript = useCallback((transcript) => {
+    setAnswer((current) => (current.trim() ? `${current.trim()} ${transcript}` : transcript))
+  }, [])
+
+  // Owns every TTS/STT lifecycle detail (auto-play, auto-listen, the
+  // speaker/mic mutual lock, question-change cleanup, StrictMode-safety)
+  // behind one small view model + a handful of commands — Interview.jsx no
+  // longer tracks any of that itself.
+  const voice = useVoiceInterviewSession({
+    questionId: question?.id,
+    questionText: question?.text,
+    active: phase === 'ready',
+    onTranscript: handleVoiceTranscript,
+  })
 
   useEffect(() => {
     let cancelled = false
@@ -174,6 +197,39 @@ function Interview() {
     )
   }
 
+  // Text mode is the default and stays completely untouched below; voice
+  // mode swaps the whole QuestionPanel+AnswerEditor pair (plus its own
+  // header) for the dedicated room, but both branches read the exact same
+  // `question`/`answer`/`handleSubmit`/`voice` — there is no second
+  // interview lifecycle, just a different presentation of the same one.
+  if (voice.state.voiceMode) {
+    return (
+      <div className="min-h-screen bg-cream">
+        <VoiceInterviewView
+          voice={voice}
+          question={question}
+          questionLimit={sessionMeta?.questionLimit}
+          roleLabel={ROLE_LABELS[sessionMeta?.role] ?? sessionMeta?.role}
+          difficultyLabel={DIFFICULTY_LABELS[sessionMeta?.difficulty] ?? sessionMeta?.difficulty}
+          topicLabel={TOPIC_LABELS[question?.topic] ?? question?.topic}
+          answer={answer}
+          onAnswerChange={setAnswer}
+          onSubmit={handleSubmit}
+          submitting={isSubmitting}
+          headingRef={questionHeadingRef}
+        />
+
+        {submitError && (
+          <div className="mx-auto max-w-3xl px-6 pb-12 sm:px-8">
+            <p role="alert" aria-live="assertive" className="text-center text-sm text-error">
+              {submitError}
+            </p>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-cream">
       <InterviewHeader
@@ -184,14 +240,37 @@ function Interview() {
         questionLimit={sessionMeta?.questionLimit}
       />
 
+      <VoiceModeToggle
+        enabled={voice.state.voiceMode}
+        onToggle={(next) => (next ? voice.commands.enableVoiceMode() : voice.commands.disableVoiceMode())}
+      />
+
       <QuestionPanel
         key={question?.id}
         questionNumber={question?.sequence}
         text={question?.text}
         headingRef={questionHeadingRef}
+        speakerDisabled={voice.activeChannel === 'mic'}
+        isSpeaking={voice.isSpeakerSpeaking}
+        speakerHasError={voice.isSpeakerError}
+        speakerSupported={voice.ttsSupported}
+        onReplay={voice.commands.replayQuestion}
+        onStopSpeaking={voice.commands.stopSpeaking}
       />
 
-      <AnswerEditor value={answer} onChange={setAnswer} onSubmit={handleSubmit} submitting={isSubmitting} />
+      <AnswerEditor
+        value={answer}
+        onChange={setAnswer}
+        onSubmit={handleSubmit}
+        submitting={isSubmitting}
+        micDisabled={voice.activeChannel === 'speaker'}
+        micState={voice.micUiState}
+        micError={voice.state.error?.source === 'stt' ? voice.state.error.message : null}
+        micSupported={voice.sttSupported}
+        lastTranscriptSeq={voice.state.finalTranscriptSeq}
+        onStartListening={voice.commands.startListening}
+        onStopListening={voice.commands.stopListening}
+      />
 
       {submitError && (
         <div className="mx-auto max-w-3xl px-6 pb-12 sm:px-8">

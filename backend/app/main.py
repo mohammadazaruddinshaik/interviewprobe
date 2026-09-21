@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.routes.interviews import router as interviews_router
+from app.api.routes.voice import router as voice_router
 from app.core.config import settings
 from app.llm.exceptions import (
     LLMConfigurationError,
@@ -27,6 +28,14 @@ from app.services.interview_service import (
     InvalidInterviewStateError,
     InvalidQuestionError,
     InvalidRoleTopicSelectionError,
+)
+from app.voice.exceptions import (
+    VoiceConfigurationError,
+    VoiceError,
+    VoiceProviderRejectedError,
+    VoiceProviderUnavailableError,
+    VoiceSynthesisError,
+    VoiceTimeoutError,
 )
 
 
@@ -167,4 +176,56 @@ for _exc_type in _LLM_ERROR_RESPONSES:
     app.add_exception_handler(_exc_type, _handle_llm_error)
 
 
+# Task 40: TTS failures, translated into the same `{"error": {"code",
+# "message"}}` envelope, same MRO-walking pattern as `_LLM_ERROR_RESPONSES`
+# above. Messages are fixed and generic — never an Azure SDK exception
+# string, request ID, or credential.
+_VOICE_ERROR_RESPONSES: dict[type[Exception], tuple[int, str, str]] = {
+    VoiceTimeoutError: (
+        504,
+        "VOICE_SERVICE_TIMEOUT",
+        "The voice service took too long to respond. Please try again.",
+    ),
+    VoiceProviderUnavailableError: (
+        503,
+        "VOICE_SERVICE_UNAVAILABLE",
+        "The voice service is temporarily unavailable. Please try again.",
+    ),
+    VoiceConfigurationError: (
+        500,
+        "VOICE_SERVICE_MISCONFIGURED",
+        "The voice service is not configured correctly.",
+    ),
+    VoiceProviderRejectedError: (
+        502,
+        "VOICE_SYNTHESIS_FAILED",
+        "The voice service could not synthesize this request.",
+    ),
+    VoiceSynthesisError: (
+        502,
+        "VOICE_SYNTHESIS_FAILED",
+        "The voice service could not synthesize this request.",
+    ),
+    VoiceError: (
+        502,
+        "VOICE_SYNTHESIS_FAILED",
+        "The voice service encountered an error. Please try again.",
+    ),
+}
+
+
+def _handle_voice_error(request: Request, exc: VoiceError) -> JSONResponse:
+    for exc_type in type(exc).__mro__:
+        response = _VOICE_ERROR_RESPONSES.get(exc_type)
+        if response is not None:
+            status_code, code, message = response
+            return JSONResponse(status_code=status_code, content={"error": {"code": code, "message": message}})
+    raise AssertionError("unreachable: VoiceError is always registered")  # pragma: no cover
+
+
+for _exc_type in _VOICE_ERROR_RESPONSES:
+    app.add_exception_handler(_exc_type, _handle_voice_error)
+
+
 app.include_router(interviews_router, prefix="/api/v1/interviews", tags=["interviews"])
+app.include_router(voice_router, prefix="/api/v1/voice", tags=["voice"])

@@ -39,6 +39,27 @@ class Settings(BaseSettings):
     # as a JSON array, without touching this code.
     cors_allowed_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
+    # Task 40: Azure Speech TTS. Credentials are backend-only and must
+    # never be exposed to the frontend. Left unset, `/api/v1/voice/tts`
+    # fails clearly with VOICE_SERVICE_MISCONFIGURED on first use — the
+    # rest of the app starts and runs fine without them, same as
+    # `llm_api_key` above.
+    tts_provider: str = "azure"
+    azure_speech_key: str | None = None
+    azure_speech_region: str | None = None
+    azure_speech_voice: str = "en-IN-PrabhatNeural"
+    tts_timeout_seconds: int = 15
+
+    # Task 41: Deepgram streaming STT. The backend only ever exchanges this
+    # permanent key for a short-lived token (POST /api/v1/voice/stt/token)
+    # — it never streams audio itself; the browser streams directly to
+    # Deepgram using that token. Left unset, the token endpoint fails
+    # clearly with VOICE_SERVICE_MISCONFIGURED on first use, same as the
+    # Azure settings above.
+    stt_auth_provider: str = "deepgram"
+    deepgram_api_key: str | None = None
+    stt_auth_timeout_seconds: int = 10
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

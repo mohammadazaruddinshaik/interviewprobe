@@ -1,8 +1,21 @@
 import Button from '../ui/Button.jsx'
+import VoiceInputButton from './VoiceInputButton.jsx'
 
 const MAX_ANSWER_LENGTH = 10_000
 
-function AnswerEditor({ value, onChange, onSubmit, submitting }) {
+function AnswerEditor({
+  value,
+  onChange,
+  onSubmit,
+  submitting,
+  micDisabled,
+  micState,
+  micError,
+  micSupported,
+  lastTranscriptSeq,
+  onStartListening,
+  onStopListening,
+}) {
   const canSubmit = value.trim().length > 0 && !submitting
 
   function handleKeyDown(event) {
@@ -14,9 +27,21 @@ function AnswerEditor({ value, onChange, onSubmit, submitting }) {
 
   return (
     <section className="mx-auto max-w-3xl px-6 pb-20 pt-6 sm:px-8">
-      <label htmlFor="interview-answer" className="text-sm font-medium text-ink">
-        Your answer
-      </label>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <label htmlFor="interview-answer" className="text-sm font-medium text-ink">
+          Your answer
+        </label>
+        <VoiceInputButton
+          micState={micState}
+          error={micError}
+          disabled={submitting || micDisabled}
+          lockedBySpeaker={micDisabled}
+          supported={micSupported}
+          lastTranscriptSeq={lastTranscriptSeq}
+          onStart={onStartListening}
+          onStop={onStopListening}
+        />
+      </div>
       <textarea
         id="interview-answer"
         value={value}

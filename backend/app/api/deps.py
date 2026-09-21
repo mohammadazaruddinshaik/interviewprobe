@@ -19,6 +19,10 @@ from app.redis.runtime_state_service import RuntimeStateService
 from app.repositories.interview_repository import InterviewRepository
 from app.services.interview_service import InterviewService
 from app.services.result_service import ResultService
+from app.voice.base import SttAuthProvider, TTSProvider
+from app.voice.factory import get_stt_auth_provider as _get_configured_stt_auth_provider
+from app.voice.factory import get_tts_provider as _get_configured_tts_provider
+from app.voice.service import SttAuthService, TTSService
 from app.workflows.interview.graph import InterviewWorkflow
 
 logger = logging.getLogger(__name__)
@@ -121,3 +125,29 @@ def get_answer_rate_limiter(redis_client: Redis = Depends(get_redis_client)) -> 
 
 def get_idempotency_store(redis_client: Redis = Depends(get_redis_client)) -> IdempotencyStore:
     return IdempotencyStore(redis_client=redis_client, ttl_seconds=settings.redis_idempotency_ttl_seconds)
+
+
+def get_tts_provider() -> TTSProvider:
+    # A thin FastAPI-dependency wrapper around the module-level factory
+    # singleton (mirrors `get_llm_provider`) — kept separate so tests can
+    # override just this dependency (e.g. with a fake provider) without
+    # touching `app.voice.factory`. Unlike `get_knowledge_retrieval_service`,
+    # this does not catch configuration errors: a misconfigured Azure
+    # Speech setup must fail clearly (VOICE_SERVICE_MISCONFIGURED), never
+    # degrade silently.
+    return _get_configured_tts_provider()
+
+
+def get_tts_service(provider: TTSProvider = Depends(get_tts_provider)) -> TTSService:
+    return TTSService(provider)
+
+
+def get_stt_auth_provider() -> SttAuthProvider:
+    # Mirrors get_tts_provider exactly — never catches a configuration
+    # error, so a missing DEEPGRAM_API_KEY fails clearly rather than
+    # degrading silently.
+    return _get_configured_stt_auth_provider()
+
+
+def get_stt_auth_service(provider: SttAuthProvider = Depends(get_stt_auth_provider)) -> SttAuthService:
+    return SttAuthService(provider)

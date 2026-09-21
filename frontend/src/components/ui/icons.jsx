@@ -203,3 +203,43 @@ export function ChevronDownIcon({ className }) {
     </svg>
   )
 }
+
+export function MicIcon({ className }) {
+  return (
+    <svg {...base({ className })}>
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0" />
+      <path d="M12 18v3" />
+      <path d="M8.5 21h7" />
+    </svg>
+  )
+}
+
+export function SpeakerIcon({ className }) {
+  return (
+    <svg {...base({ className })}>
+      <path d="M4 9.5v5h4l5 4v-13l-5 4H4z" />
+      <path d="M16.5 9a4.5 4.5 0 0 1 0 6" />
+      <path d="M19 6.5a8.5 8.5 0 0 1 0 11" />
+    </svg>
+  )
+}
+
+export function StopIcon({ className }) {
+  return (
+    <svg {...base({ className, fill: 'currentColor', stroke: 'none' })}>
+      <rect x="6" y="6" width="12" height="12" rx="2" />
+    </svg>
+  )
+}
+
+export function HeadsetIcon({ className }) {
+  return (
+    <svg {...base({ className })}>
+      <path d="M4 13v-1a8 8 0 0 1 16 0v1" />
+      <rect x="3" y="13" width="4" height="6" rx="1.5" />
+      <rect x="17" y="13" width="4" height="6" rx="1.5" />
+      <path d="M20 19v1a2 2 0 0 1-2 2h-3" />
+    </svg>
+  )
+}

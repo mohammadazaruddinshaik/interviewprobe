@@ -12,3 +12,4 @@ openai
 google-genai
 langgraph
 qdrant-client
+azure-cognitiveservices-speech
