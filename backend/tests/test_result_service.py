@@ -23,7 +23,21 @@ from app.services.interview_service import InterviewNotFoundError, InterviewServ
 from app.services.result_service import ResultService
 from app.workflows.interview.graph import InterviewWorkflow
 from app.workflows.interview.models import AnswerAnalysis, GeneratedQuestion, NextAction
-from tests.fakes import FakeLLMProvider
+from tests.fakes import FakeAsyncRedis, FakeLLMProvider
+
+# Task 53: EvaluationService now requires a Redis client/lock TTL for its
+# evaluation-generation lock. A fresh FakeAsyncRedis per service (never
+# shared across sessions/tests) is enough here — none of these tests
+# exercise lock contention itself (see tests/test_evaluation_service.py
+# for that), only that ResultService's existing evaluation integration is
+# unaffected by the new constructor shape.
+_TEST_LOCK_TTL_SECONDS = 30
+
+
+def make_evaluation_service(repository, llm_provider, redis_client=None):
+    return EvaluationService(
+        repository, llm_provider, redis_client or FakeAsyncRedis(), _TEST_LOCK_TTL_SECONDS
+    )
 
 # Same sqlite-compatibility strategy as tests/test_evaluation_service.py.
 
@@ -109,7 +123,7 @@ async def create_completed_interview(
 
 
 def make_result_service(repository: InterviewRepository, llm_provider: FakeLLMProvider) -> ResultService:
-    evaluation_service = EvaluationService(repository, llm_provider)
+    evaluation_service = make_evaluation_service(repository, llm_provider)
     return ResultService(repository, evaluation_service)
 
 
@@ -296,7 +310,7 @@ async def test_result_for_completed_interview_without_evaluation_triggers_exactl
 async def test_result_with_existing_evaluation_does_not_call_the_llm(repository: InterviewRepository):
     session_id = await create_completed_interview(repository)
     fake_llm = FakeLLMProvider(structured_responses={"EvaluationResult": default_evaluation_result()})
-    evaluation_service = EvaluationService(repository, fake_llm)
+    evaluation_service = make_evaluation_service(repository, fake_llm)
     await evaluation_service.get_or_create_evaluation(session_id)  # pre-existing evaluation
     assert len(fake_llm.calls) == 1
 

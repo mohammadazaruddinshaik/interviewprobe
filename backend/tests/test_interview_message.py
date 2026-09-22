@@ -1,4 +1,4 @@
-from sqlalchemy import CheckConstraint
+from sqlalchemy import CheckConstraint, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.models.interview_message import InterviewMessage
@@ -58,10 +58,14 @@ def test_interview_message_sequence_number_constraint():
     assert check_constraints["ck_interview_messages_sequence_number_min"] == "sequence_number >= 1"
 
 
-def test_interview_message_session_sequence_index():
-    index_names = {index.name: [c.name for c in index.columns] for index in InterviewMessage.__table__.indexes}
+def test_interview_message_session_sequence_unique_constraint():
+    unique_constraints = {
+        constraint.name: [c.name for c in constraint.columns]
+        for constraint in InterviewMessage.__table__.constraints
+        if isinstance(constraint, UniqueConstraint)
+    }
 
-    assert index_names["ix_interview_messages_session_id_sequence_number"] == [
+    assert unique_constraints["uq_interview_messages_session_id_sequence_number"] == [
         "session_id",
         "sequence_number",
     ]

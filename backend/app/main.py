@@ -1,13 +1,19 @@
+import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from redis.asyncio import Redis
+from sqlalchemy.orm import Session
 
 from app.api.routes.interviews import router as interviews_router
 from app.api.routes.voice import router as voice_router
 from app.core.config import settings
+from app.core.logging_config import configure_logging
+from app.core.readiness import check_database, check_redis
+from app.db.session import get_db
 from app.llm.exceptions import (
     LLMConfigurationError,
     LLMError,
@@ -16,8 +22,9 @@ from app.llm.exceptions import (
     LLMRateLimitError,
     LLMTimeoutError,
 )
-from app.redis.client import create_redis_pool
+from app.redis.client import create_redis_pool, get_redis_client
 from app.redis.exceptions import (
+    EvaluationLockBusyError,
     IdempotencyKeyReusedError,
     InterviewLockBusyError,
     RateLimitExceededError,
@@ -37,6 +44,9 @@ from app.voice.exceptions import (
     VoiceSynthesisError,
     VoiceTimeoutError,
 )
+
+
+configure_logging()
 
 
 @asynccontextmanager
@@ -70,12 +80,37 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/ready")
+async def ready(
+    db: Session = Depends(get_db),
+    redis_client: Redis = Depends(get_redis_client),
+) -> JSONResponse:
+    # Task 50: distinct from /health above (process-alive liveness, no
+    # dependency check, always 200) — this verifies the process can
+    # actually reach PostgreSQL and Redis, bounded by
+    # settings.readiness_timeout_seconds via check_database/check_redis
+    # (app.core.readiness). Run concurrently: both checks are already
+    # individually bounded, so total endpoint latency is roughly
+    # max(db_check, redis_check), not their sum. Neither check mutates
+    # any application state (a read-only SELECT 1 / PING) and neither
+    # ever raises, so this route needs no try/except of its own.
+    database_ok, redis_ok = await asyncio.gather(check_database(db), check_redis(redis_client))
+    checks = {
+        "database": "ok" if database_ok else "unavailable",
+        "redis": "ok" if redis_ok else "unavailable",
+    }
+    if database_ok and redis_ok:
+        return JSONResponse(status_code=200, content={"status": "ready", "checks": checks})
+    return JSONResponse(status_code=503, content={"status": "not_ready", "checks": checks})
+
+
 _SERVICE_ERROR_STATUS_CODES: dict[type[Exception], tuple[int, str]] = {
     InterviewNotFoundError: (404, "INTERVIEW_NOT_FOUND"),
     InvalidInterviewStateError: (409, "INVALID_INTERVIEW_STATE"),
     InvalidQuestionError: (409, "INVALID_QUESTION"),
     InvalidRoleTopicSelectionError: (422, "INVALID_ROLE_TOPIC"),
     InterviewLockBusyError: (409, "INTERVIEW_BUSY"),
+    EvaluationLockBusyError: (409, "EVALUATION_BUSY"),
     IdempotencyKeyReusedError: (409, "IDEMPOTENCY_KEY_REUSED"),
 }
 

@@ -16,7 +16,11 @@ from app.domain.enums import (
     QuestionType,
     Role,
 )
-from app.knowledge.exceptions import EmbeddingProviderUnavailableError, KnowledgeStoreUnavailableError
+from app.knowledge.exceptions import (
+    EmbeddingProviderUnavailableError,
+    EmbeddingTimeoutError,
+    KnowledgeStoreUnavailableError,
+)
 from app.knowledge.models import KnowledgeChunk
 from app.knowledge.retrieval_service import KnowledgeRetrievalService
 from app.knowledge.store.base import KnowledgeStore
@@ -405,6 +409,36 @@ async def test_embedding_provider_failure_falls_back_to_ungrounded_generation():
     question = make_question(session.id, topic=InterviewTopic.DATABASES)
     repository = FakeInterviewRepository(session=session, topics=[], current_question=question)
     embedding_provider = FakeEmbeddingProvider(error=EmbeddingProviderUnavailableError("simulated outage"))
+    knowledge_service = KnowledgeRetrievalService(embedding_provider=embedding_provider, store=FakeKnowledgeStore())
+    llm = FakeLLMProvider(
+        structured_responses={
+            "AnswerAnalysis": analysis(needs_follow_up=True),
+            "NextAction": NextAction(
+                action="FOLLOW_UP", topic=InterviewTopic.DATABASES, difficulty=Difficulty.MEDIUM, rationale="x"
+            ),
+            "GeneratedQuestion": SAMPLE_GENERATED_QUESTION,
+        }
+    )
+
+    graph = build_answer_graph(repository, llm, knowledge_service, knowledge_retrieval_limit=5)
+    final_state = await graph.ainvoke({"session_id": session.id, "candidate_answer": "an answer"})  # must not raise
+
+    assert final_state["retrieved_knowledge"] == []
+    assert final_state["generated_question"] == SAMPLE_GENERATED_QUESTION
+
+
+@pytest.mark.asyncio
+async def test_embedding_provider_timeout_falls_back_to_ungrounded_generation():
+    # Task 49 — EmbeddingTimeoutError is a KnowledgeError subclass, so it
+    # must degrade exactly like test_embedding_provider_failure_falls_back_
+    # to_ungrounded_generation above (a plain EmbeddingProviderUnavailableError)
+    # rather than needing its own special-cased handling anywhere in the
+    # workflow: the existing `except KnowledgeError` boundary in
+    # retrieve_knowledge already covers it with zero code changes.
+    session = make_session(role=Role.BACKEND_DEVELOPER, current_question_number=2, question_limit=5)
+    question = make_question(session.id, topic=InterviewTopic.DATABASES)
+    repository = FakeInterviewRepository(session=session, topics=[], current_question=question)
+    embedding_provider = FakeEmbeddingProvider(error=EmbeddingTimeoutError("simulated embedding timeout"))
     knowledge_service = KnowledgeRetrievalService(embedding_provider=embedding_provider, store=FakeKnowledgeStore())
     llm = FakeLLMProvider(
         structured_responses={

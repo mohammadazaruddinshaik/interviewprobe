@@ -129,6 +129,13 @@ class FakeAsyncRedis:
 
         raise NotImplementedError("FakeAsyncRedis.eval: unrecognized script")
 
+    async def ping(self) -> bool:
+        # Task 50 — GET /ready's Redis check. Not exercised by any
+        # lock/rate-limit/idempotency code (none of it pings), only by
+        # app.core.readiness.check_redis.
+        await asyncio.sleep(0)
+        return True
+
     async def aclose(self) -> None:
         pass
 
@@ -150,6 +157,7 @@ class FailingAsyncRedis:
     exists = _fail
     ttl = _fail
     eval = _fail
+    ping = _fail  # Task 50 — GET /ready's Redis check
 
     async def aclose(self) -> None:
         pass

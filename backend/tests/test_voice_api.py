@@ -1,13 +1,16 @@
 """Task 40 — `POST /api/v1/voice/tts` through the full HTTP stack: request
 validation, binary audio response, and VoiceError -> stable API error
 mapping. `get_tts_service` is overridden with a fake — no real Azure call,
-no database, no Redis."""
+no database. `get_redis_client` is overridden with `FakeAsyncRedis` (Task
+46 added a per-client rate-limit check ahead of every request here); see
+test_voice_rate_limit_api.py for the rate limiter's own behavior."""
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.api.deps import get_tts_service
 from app.main import app
+from app.redis.client import get_redis_client
 from app.voice.exceptions import (
     VoiceConfigurationError,
     VoiceProviderRejectedError,
@@ -16,6 +19,7 @@ from app.voice.exceptions import (
     VoiceTimeoutError,
 )
 from app.voice.models import TTSResponse
+from tests.fakes import FakeAsyncRedis
 
 client = TestClient(app)
 
@@ -36,6 +40,10 @@ class FakeTTSService:
 
 @pytest.fixture(autouse=True)
 def _clear_overrides():
+    async def override_get_redis_client():
+        return FakeAsyncRedis()
+
+    app.dependency_overrides[get_redis_client] = override_get_redis_client
     yield
     app.dependency_overrides.clear()
 

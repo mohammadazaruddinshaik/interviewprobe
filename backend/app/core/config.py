@@ -4,6 +4,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_name: str = "AI Engineering Interview Platform"
     environment: str = "development"
+    # Task 48: the level `app.*` loggers emit at (see app/core/logging_config.py).
+    # An unrecognized value falls back to INFO at configure_logging() time
+    # rather than failing startup — deliberately not validated here, to
+    # keep this settings model free of the custom-validator pattern the
+    # rest of it doesn't otherwise use.
+    log_level: str = "INFO"
+    # Task 50: bounds each individual dependency check inside GET /ready
+    # (database, Redis) — short and deliberately separate from any other
+    # timeout in this file, since this endpoint must respond quickly even
+    # when a dependency is genuinely hung, not just erroring.
+    readiness_timeout_seconds: float = 3.0
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/ai_interview"
     redis_url: str = "redis://localhost:6379/0"
     redis_interview_state_ttl_seconds: int = 86400
@@ -27,6 +38,11 @@ class Settings(BaseSettings):
     embedding_provider: str = "openai"
     embedding_model: str = "text-embedding-3-small"
     embedding_api_key: str | None = None
+    # Task 49: shorter than llm_timeout_seconds (30s) deliberately — a
+    # single embedding call is a much simpler/faster operation than a chat
+    # completion, and it sits on the RAG retrieval path a candidate is
+    # actively waiting on for their next question, not a background job.
+    embedding_timeout_seconds: int = 10
 
     # Task 20: how many knowledge chunks `retrieve_knowledge` asks for per
     # graph turn. Kept small and bounded — the LLM prompt receives at most
@@ -59,6 +75,20 @@ class Settings(BaseSettings):
     stt_auth_provider: str = "deepgram"
     deepgram_api_key: str | None = None
     stt_auth_timeout_seconds: int = 10
+
+    # Task 46: per-client (IP-based) abuse protection for the four
+    # endpoints reachable with no existing interview session to scope a
+    # rate limit by — this app has no authentication, so these are the
+    # only protection against unbounded paid-API usage (LLM calls via
+    # interview creation/start, Azure TTS, Deepgram token issuance).
+    interview_creation_rate_limit: int = 10
+    interview_creation_rate_window_seconds: int = 60
+    interview_start_rate_limit: int = 5
+    interview_start_rate_window_seconds: int = 60
+    voice_tts_rate_limit: int = 30
+    voice_tts_rate_window_seconds: int = 60
+    voice_stt_token_rate_limit: int = 10
+    voice_stt_token_rate_window_seconds: int = 60
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

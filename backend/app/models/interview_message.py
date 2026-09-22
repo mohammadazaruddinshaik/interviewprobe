@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, Index, Integer, Text, func
+from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, Integer, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -18,7 +18,14 @@ class InterviewMessage(Base):
     __tablename__ = "interview_messages"
     __table_args__ = (
         CheckConstraint("sequence_number >= 1", name="ck_interview_messages_sequence_number_min"),
-        Index("ix_interview_messages_session_id_sequence_number", "session_id", "sequence_number"),
+        # Replaces the old plain index of the same columns: a unique
+        # constraint already creates a covering unique index, so keeping
+        # both would just be a redundant index maintained on every insert.
+        # Same approach as InterviewTopicEntry's (session_id,
+        # sequence_number) constraint.
+        UniqueConstraint(
+            "session_id", "sequence_number", name="uq_interview_messages_session_id_sequence_number"
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

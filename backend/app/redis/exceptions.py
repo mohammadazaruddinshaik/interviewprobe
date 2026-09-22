@@ -13,14 +13,26 @@ class InterviewLockBusyError(Exception):
     """Another request currently holds the interview's mutation lock."""
 
 
-class RateLimitExceededError(Exception):
-    """The answer-submission rate limit for this interview session was
-    exceeded. Carries the number of seconds until the window resets so the
-    API layer can set a `Retry-After` header."""
+class EvaluationLockBusyError(Exception):
+    """Another request is currently generating this session's evaluation
+    (Task 53). Non-blocking, same as `InterviewLockBusyError` — the
+    caller must not wait internally, only surface a 409 so the client can
+    retry."""
 
-    def __init__(self, retry_after_seconds: int):
+
+class RateLimitExceededError(Exception):
+    """A rate limit was exceeded — originally answer submissions only, now
+    also the per-client limiters in `app/api/deps.py` (Task 46). Carries
+    the number of seconds until the window resets so the API layer can set
+    a `Retry-After` header. `message` defaults to the original
+    answer-submission wording so every existing call site is unaffected;
+    other call sites pass an endpoint-appropriate message. Either way,
+    `main.py`'s handler always maps this to the same `RATE_LIMITED` error
+    code — only the message varies."""
+
+    def __init__(self, retry_after_seconds: int, message: str = "Too many answer submissions. Please try again shortly."):
         self.retry_after_seconds = retry_after_seconds
-        super().__init__("Too many answer submissions. Please try again shortly.")
+        super().__init__(message)
 
 
 class IdempotencyKeyReusedError(Exception):

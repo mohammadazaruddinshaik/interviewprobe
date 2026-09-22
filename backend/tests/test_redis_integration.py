@@ -17,8 +17,8 @@ from redis.exceptions import RedisError
 from app.core.config import settings
 from app.domain.enums import Difficulty, InterviewStatus, InterviewTopic
 from app.redis.idempotency import IdempotencyRecord, IdempotencyStore, fingerprint_request
-from app.redis.keys import InterviewRedisKeys
-from app.redis.lock import InterviewLock
+from app.redis.keys import EvaluationRedisKeys, InterviewRedisKeys
+from app.redis.lock import EvaluationLock, InterviewLock
 from app.redis.rate_limit import AnswerRateLimiter
 from app.redis.runtime_state import InterviewRuntimeNode, InterviewRuntimeState
 
@@ -71,6 +71,33 @@ async def test_real_redis_lock_mutual_exclusion_and_ownership(real_redis_client:
     key = InterviewRedisKeys.lock(session_id)
     lock_a = InterviewLock(real_redis_client, session_id, ttl_seconds=30)
     lock_b = InterviewLock(real_redis_client, session_id, ttl_seconds=30)
+
+    try:
+        assert await lock_a.acquire() is True
+        assert await lock_b.acquire() is False  # genuinely still held in real Redis
+
+        await lock_b.release()  # B never owned it -> must not remove A's lock
+        assert await real_redis_client.exists(key) == 1  # A's lock is untouched
+
+        await lock_a.release()
+        assert await real_redis_client.exists(key) == 0  # genuinely removed
+
+        assert await lock_b.acquire() is True  # now free
+    finally:
+        await lock_a.release()
+        await lock_b.release()
+        await real_redis_client.delete(key)
+
+
+@pytest.mark.asyncio
+async def test_real_redis_evaluation_lock_mutual_exclusion_and_ownership(real_redis_client: Redis):
+    """Task 53 — same coverage as `test_real_redis_lock_mutual_exclusion_
+    and_ownership` above, but for `EvaluationLock`'s own key namespace,
+    against a real Redis server rather than the in-memory fake."""
+    session_id = uuid.uuid4()
+    key = EvaluationRedisKeys.lock(session_id)
+    lock_a = EvaluationLock(real_redis_client, session_id, ttl_seconds=30)
+    lock_b = EvaluationLock(real_redis_client, session_id, ttl_seconds=30)
 
     try:
         assert await lock_a.acquire() is True

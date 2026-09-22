@@ -2,7 +2,10 @@
 
 * the evaluation layer never imports Qdrant or a provider SDK directly
 * it depends only on the existing `LLMProvider` abstraction
-* it never depends on Redis
+* it depends on Redis only for its own evaluation-generation lock (Task
+  53's `EvaluationLock`/`EvaluationLockBusyError`/`EvaluationRedisKeys`)
+  — never the interview runtime-state, idempotency, or rate-limiting
+  layers, which remain none of its concern
 * it never mutates interview-lifecycle fields (status, current question,
   topics, ...) — its only durable mutation is the `evaluations` row
 * no new PostgreSQL schema (no new Alembic migration) was introduced
@@ -61,11 +64,31 @@ def test_evaluation_service_depends_on_the_llm_provider_abstraction():
     assert hasattr(service.EvaluationService, "get_or_create_evaluation")
 
 
-def test_evaluation_package_never_imports_redis():
+def test_evaluation_package_only_imports_its_own_redis_lock():
+    # Task 53: EvaluationService gained a narrow, deliberate Redis
+    # dependency — its own evaluation-generation lock — so the old
+    # "never imports Redis" invariant no longer holds. What must still
+    # hold: it never reaches into the interview runtime-state,
+    # idempotency, or rate-limiting layers, which are none of its
+    # concern and would mean unwanted coupling to interview-lifecycle
+    # machinery.
+    forbidden_redis_modules = {
+        "app.redis.runtime_state_service",
+        "app.redis.idempotency",
+        "app.redis.rate_limit",
+        "app.redis.client",
+    }
     for path in _evaluation_module_files():
         imports = _imported_module_roots(path)
-        assert not any(module.startswith("redis") or module.startswith("app.redis") for module in imports), (
-            f"{path.name} must not depend on Redis — evaluation has no runtime-coordination need"
+        assert not (imports & forbidden_redis_modules), (
+            f"{path.name} must not depend on {imports & forbidden_redis_modules} — evaluation's only "
+            "Redis dependency is its own evaluation-generation lock"
+        )
+        redis_imports = {module for module in imports if module.startswith(("redis", "app.redis"))}
+        allowed_redis_modules = {"redis.asyncio", "app.redis.lock", "app.redis.exceptions", "app.redis.keys"}
+        assert redis_imports <= allowed_redis_modules, (
+            f"{path.name} imports unexpected Redis module(s) {redis_imports - allowed_redis_modules} — "
+            "only the evaluation lock's own primitives are allowed"
         )
 
 
@@ -108,6 +131,7 @@ def test_no_new_alembic_migration_was_introduced_for_evaluation():
     migrations_dir = Path(__file__).resolve().parent.parent / "alembic" / "versions"
     revision_files = sorted(p.name for p in migrations_dir.glob("*.py"))
     assert revision_files == [
+        "373850180458_add_unique_constraint_on_session_.py",
         "538fb309b1be_create_interview_topics_table.py",
         "a451a0225842_create_interview_sessions_table.py",
         "d00c8abb5098_create_interview_questions_messages_.py",

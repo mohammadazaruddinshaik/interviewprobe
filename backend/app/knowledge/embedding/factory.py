@@ -19,7 +19,11 @@ def _build_embedding_provider() -> EmbeddingProvider:
     # OpenAI key can cover both text generation and embeddings, without
     # forcing every deployment to configure the same key twice.
     api_key = settings.embedding_api_key or settings.llm_api_key
-    return provider_cls(model=settings.embedding_model, api_key=api_key)
+    return provider_cls(
+        model=settings.embedding_model,
+        api_key=api_key,
+        timeout_seconds=settings.embedding_timeout_seconds,
+    )
 
 
 def get_embedding_provider() -> EmbeddingProvider:

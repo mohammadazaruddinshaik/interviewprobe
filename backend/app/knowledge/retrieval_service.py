@@ -22,10 +22,12 @@ class KnowledgeRetrievalService:
     embedding provider or the store, so an invalid filter fails fast and
     cheaply.
 
-    No LLM calls happen here — this is a pure retrieval layer. It is not
-    wired into `InterviewService` or the LangGraph workflow yet; that is
-    the next task's integration point (Task 19 explicitly stops short of
-    it).
+    No LLM calls happen here — this is a pure retrieval layer. It is
+    wired into the LangGraph interview workflow via the `retrieve_knowledge`
+    node (`app/workflows/interview/nodes.py`), which calls `search` to
+    ground question generation (`generate_initial_question`/
+    `generate_question`) — that integration was Task 20's, added after
+    this service itself was introduced in Task 19.
     """
 
     def __init__(self, embedding_provider: EmbeddingProvider, store: KnowledgeStore):

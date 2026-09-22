@@ -20,21 +20,28 @@ return current
 """
 
 
-class AnswerRateLimiter:
-    """Fixed-window rate limiter for answer submissions on one interview
-    session (`interview:{session_id}:rate`)."""
+class FixedWindowRateLimiter:
+    """Generic fixed-window rate limiter over an arbitrary Redis key.
+
+    This is the one place the atomic INCR+EXPIRE pattern is implemented —
+    `AnswerRateLimiter` below (session-scoped) and the per-client limiters
+    added in Task 46 (`app/api/deps.py`, keyed by
+    `InterviewRedisKeys.client_rate_limit`) both delegate to this class
+    rather than each re-implementing the same Lua script against their own
+    key shape.
+    """
 
     def __init__(self, redis_client: Redis, limit: int, window_seconds: int):
         self._redis = redis_client
         self._limit = limit
         self._window_seconds = window_seconds
 
-    async def check_and_increment(self, session_id: UUID) -> tuple[bool, int]:
-        """Increments the counter and returns `(allowed, retry_after_seconds)`.
+    async def check_and_increment(self, key: str) -> tuple[bool, int]:
+        """Increments the counter for `key` and returns
+        `(allowed, retry_after_seconds)`.
 
         `retry_after_seconds` is only meaningful when `allowed` is False.
         """
-        key = InterviewRedisKeys.rate_limit(session_id)
         try:
             current = await self._redis.eval(
                 _INCR_AND_EXPIRE_SCRIPT, 1, key, self._window_seconds
@@ -47,5 +54,19 @@ class AnswerRateLimiter:
             return True, 0
         except RedisError as exc:
             raise RedisProtectionUnavailableError(
-                f"Rate limiter unavailable for session {session_id}"
+                f"Rate limiter unavailable for key {key}"
             ) from exc
+
+
+class AnswerRateLimiter:
+    """Fixed-window rate limiter for answer submissions on one interview
+    session (`interview:{session_id}:rate`). A thin, session-keyed wrapper
+    around `FixedWindowRateLimiter` — kept as its own class purely so
+    existing call sites keep passing a `session_id` (a `UUID`, not a raw
+    Redis key string) exactly as before."""
+
+    def __init__(self, redis_client: Redis, limit: int, window_seconds: int):
+        self._limiter = FixedWindowRateLimiter(redis_client, limit, window_seconds)
+
+    async def check_and_increment(self, session_id: UUID) -> tuple[bool, int]:
+        return await self._limiter.check_and_increment(InterviewRedisKeys.rate_limit(session_id))

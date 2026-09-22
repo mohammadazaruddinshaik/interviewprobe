@@ -19,6 +19,16 @@ class EmbeddingProviderUnavailableError(KnowledgeError):
     5xx, rate limiting, or another transient provider-side condition."""
 
 
+class EmbeddingTimeoutError(KnowledgeError):
+    """The embedding request exceeded the configured timeout
+    (`EMBEDDING_TIMEOUT_SECONDS`) — deliberately its own subclass, not
+    folded into `EmbeddingProviderUnavailableError`, so a stalled request
+    is distinguishable from a genuine outage/rejection if that distinction
+    ever matters to a caller. Like every other `KnowledgeError`, the
+    `retrieve_knowledge` workflow node catches this at the same boundary
+    and degrades to ungrounded generation rather than failing the turn."""
+
+
 class KnowledgeStoreUnavailableError(KnowledgeError):
     """The vector store (Qdrant) is unreachable or returned an unexpected
     error while upserting, searching, or deleting knowledge."""

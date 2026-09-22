@@ -5,7 +5,7 @@ import pytest
 
 from app.redis.exceptions import RedisProtectionUnavailableError
 from app.redis.keys import InterviewRedisKeys
-from app.redis.rate_limit import AnswerRateLimiter
+from app.redis.rate_limit import AnswerRateLimiter, FixedWindowRateLimiter
 from tests.fakes import FailingAsyncRedis, FakeAsyncRedis
 
 
@@ -108,3 +108,54 @@ async def test_redis_failure_is_surfaced_explicitly():
 
     with pytest.raises(RedisProtectionUnavailableError):
         await limiter.check_and_increment(uuid.uuid4())
+
+
+# ---------------------------------------------------------------------------
+# FixedWindowRateLimiter (Task 46) — the generic primitive AnswerRateLimiter
+# above now delegates to, and the per-client limiters in app/api/deps.py are
+# built on. Exercised directly here over an arbitrary string key, since it
+# no longer knows anything about sessions/UUIDs.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_generic_limiter_allows_up_to_the_limit_then_rejects(fake_redis: FakeAsyncRedis):
+    limiter = FixedWindowRateLimiter(fake_redis, limit=3, window_seconds=60)
+
+    for _ in range(3):
+        allowed, _ = await limiter.check_and_increment("voice:tts:127.0.0.1")
+        assert allowed is True
+
+    allowed, retry_after = await limiter.check_and_increment("voice:tts:127.0.0.1")
+    assert allowed is False
+    assert retry_after > 0
+
+
+@pytest.mark.asyncio
+async def test_generic_limiter_keys_are_independent(fake_redis: FakeAsyncRedis):
+    limiter = FixedWindowRateLimiter(fake_redis, limit=1, window_seconds=60)
+
+    allowed_a, _ = await limiter.check_and_increment("voice:tts:1.1.1.1")
+    allowed_a_again, _ = await limiter.check_and_increment("voice:tts:1.1.1.1")
+    allowed_b, _ = await limiter.check_and_increment("voice:stt-token:1.1.1.1")
+
+    assert allowed_a is True
+    assert allowed_a_again is False  # same key, budget already spent
+    assert allowed_b is True  # different namespace, independent budget
+
+
+@pytest.mark.asyncio
+async def test_generic_limiter_redis_failure_is_surfaced_explicitly():
+    limiter = FixedWindowRateLimiter(FailingAsyncRedis(), limit=10, window_seconds=60)
+
+    with pytest.raises(RedisProtectionUnavailableError):
+        await limiter.check_and_increment("interview:create:127.0.0.1")
+
+
+def test_client_rate_limit_key_is_namespaced_by_endpoint_and_client():
+    create_key = InterviewRedisKeys.client_rate_limit("interview:create", "127.0.0.1")
+    start_key = InterviewRedisKeys.client_rate_limit("interview:start", "127.0.0.1")
+
+    assert create_key == "interview:create:127.0.0.1"
+    assert start_key == "interview:start:127.0.0.1"
+    assert create_key != start_key  # same client, different endpoint -> different bucket

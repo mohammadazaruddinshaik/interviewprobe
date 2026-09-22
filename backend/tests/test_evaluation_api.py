@@ -153,7 +153,8 @@ def test_evaluation_success_response_never_exposes_internal_fields():
 
 
 # ---------------------------------------------------------------------------
-# Concurrency — at most one evaluation row is ever persisted
+# Concurrency — Task 53: at most one evaluation LLM call/row, the rest see
+# a stable 409 EVALUATION_BUSY rather than silently duplicating the call
 # ---------------------------------------------------------------------------
 
 
@@ -171,13 +172,31 @@ def test_concurrent_evaluation_requests_persist_exactly_one_evaluation():
             futures = [executor.submit(request_evaluation) for _ in range(4)]
             responses = [f.result() for f in futures]
 
-        assert all(r.status_code == 200 for r in responses)
-        bodies = [r.json()["data"] for r in responses]
-        # Every concurrent request observes the same, single evaluation.
+        # Task 53: only the request that wins the evaluation-generation
+        # lock gets a 200 on the first attempt — the rest see the stable
+        # 409 EVALUATION_BUSY conflict response rather than blocking or
+        # each independently paying for their own LLM call. At least one
+        # request must still succeed (the lock winner).
+        statuses = [r.status_code for r in responses]
+        assert statuses.count(200) >= 1
+        assert all(status in (200, 409) for status in statuses)
+        for response in responses:
+            if response.status_code == 409:
+                assert response.json()["error"]["code"] == "EVALUATION_BUSY"
+
+        bodies = [r.json()["data"] for r in responses if r.status_code == 200]
+        # Every successful concurrent request observes the same, single
+        # evaluation.
         session_ids = {b["session_id"] for b in bodies}
         overall_scores = {b["overall_score"] for b in bodies}
         assert len(session_ids) == 1
         assert len(overall_scores) == 1
+
+        # The most important guarantee (Task 53): the expensive LLM call
+        # itself happened exactly once for the evaluation, never once per
+        # concurrent request — not merely that one row landed in the DB.
+        evaluation_calls = [call for call in fake_llm.calls if call[0] == "EvaluationResult"]
+        assert len(evaluation_calls) == 1
 
         db = session_factory()
         try:
@@ -189,3 +208,25 @@ def test_concurrent_evaluation_requests_persist_exactly_one_evaluation():
             assert len(rows) == 1
         finally:
             db.close()
+
+
+def test_a_losing_concurrent_request_can_retry_and_receive_the_evaluation():
+    """A 409 EVALUATION_BUSY is not a dead end: once the winner's
+    generation finishes (lock released, evaluation persisted), a retried
+    request finds it via the plain, unlocked first check — no new LLM
+    call, no busy error."""
+    fake_redis = FakeAsyncRedis()
+    fake_llm = _fake_llm_that_completes_and_evaluates(default_evaluation_result())
+
+    with build_client(fake_redis, fake_llm) as (client, _):
+        created = _complete_interview(client)
+
+        first = client.get(f"/api/v1/interviews/{created['id']}/evaluation")
+        assert first.status_code == 200
+
+        retry = client.get(f"/api/v1/interviews/{created['id']}/evaluation")
+        assert retry.status_code == 200
+        assert retry.json()["data"] == first.json()["data"]
+
+        evaluation_calls = [call for call in fake_llm.calls if call[0] == "EvaluationResult"]
+        assert len(evaluation_calls) == 1

@@ -6,6 +6,8 @@ from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 
 from app.api.deps import (
+    enforce_interview_creation_rate_limit,
+    enforce_interview_start_rate_limit,
     get_answer_rate_limiter,
     get_evaluation_service,
     get_idempotency_store,
@@ -99,6 +101,7 @@ async def _mirror_runtime_state(
 def create_interview(
     payload: CreateInterviewRequest,
     service: InterviewService = Depends(get_interview_service),
+    _rate_limit: None = Depends(enforce_interview_creation_rate_limit),
 ) -> DataResponse[CreateInterviewResponse]:
     session = service.create_interview(
         role=payload.role,
@@ -127,6 +130,7 @@ async def start_interview(
     service: InterviewService = Depends(get_interview_service),
     runtime_state_service: RuntimeStateService = Depends(get_runtime_state_service),
     redis_client: Redis = Depends(get_redis_client),
+    _rate_limit: None = Depends(enforce_interview_start_rate_limit),
 ):
     lock = InterviewLock(redis_client, session_id, settings.redis_interview_lock_ttl_seconds)
     try:
