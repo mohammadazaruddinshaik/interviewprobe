@@ -1,6 +1,8 @@
-// The contract every TTS provider must satisfy — browser SpeechSynthesis
-// today, a remote provider (e.g. Azure) later. The voice session only ever
-// talks to this shape; it never knows which concrete provider it's holding.
+// The contract every TTS provider must satisfy — currently one concrete
+// implementation (Azure Speech, remoteTtsProvider.js), kept behind this
+// abstraction rather than called directly so the voice session only ever
+// talks to this shape and never knows which concrete provider it's
+// holding.
 //
 // @typedef {Object} TtsSpeakCallbacks
 // @property {() => void} [onStart] - playback has audibly begun

@@ -232,14 +232,3 @@ export function StopIcon({ className }) {
     </svg>
   )
 }
-
-export function HeadsetIcon({ className }) {
-  return (
-    <svg {...base({ className })}>
-      <path d="M4 13v-1a8 8 0 0 1 16 0v1" />
-      <rect x="3" y="13" width="4" height="6" rx="1.5" />
-      <rect x="17" y="13" width="4" height="6" rx="1.5" />
-      <path d="M20 19v1a2 2 0 0 1-2 2h-3" />
-    </svg>
-  )
-}

@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { VOICE_STATUS } from '../../../voice/voiceState.js'
 
-// Mirrors AnswerEditor.jsx's own MAX_ANSWER_LENGTH — kept as a small local
-// duplicate rather than a shared import, since the two editors are
-// otherwise fully independent presentational components.
+// Matches the backend's answer length cap (SubmitAnswerRequest.answer).
 const MAX_ANSWER_LENGTH = 10_000
 
 const CANDIDATE_ACTIVE_STATUSES = [VOICE_STATUS.CANDIDATE_LISTENING, VOICE_STATUS.CANDIDATE_SPEAKING]

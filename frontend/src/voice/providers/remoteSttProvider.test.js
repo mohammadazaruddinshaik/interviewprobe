@@ -21,8 +21,9 @@ FakeMediaRecorder.instances = []
 FakeMediaRecorder.isTypeSupported = vi.fn(() => true)
 
 class FakeWebSocket {
-  constructor(url) {
+  constructor(url, protocols) {
     this.url = url
+    this.protocols = protocols
     this.readyState = FakeWebSocket.CONNECTING
     this.onopen = null
     this.onmessage = null
@@ -144,18 +145,24 @@ describe('remoteSttProvider (fake getUserMedia/MediaRecorder/WebSocket, no real 
     expect(getUserMedia).toHaveBeenCalledOnce()
   })
 
-  it('4. a streaming connection is established with the expected model/language/keyterm/token params', async () => {
+  it('4. a streaming connection is established with the expected model/language/keyterm params, and the token via the bearer subprotocol', async () => {
     const provider = createRemoteSttProvider()
     await provider.start({})
     await flush()
 
     expect(FakeWebSocket.instances).toHaveLength(1)
-    const url = new URL(FakeWebSocket.instances[0].url)
+    const instance = FakeWebSocket.instances[0]
+    const url = new URL(instance.url)
     expect(url.protocol).toBe('wss:')
     expect(url.searchParams.get('model')).toBe('nova-3')
     expect(url.searchParams.get('language')).toBe('en-IN')
     expect(url.searchParams.getAll('keyterm').length).toBeGreaterThan(0)
-    expect(url.searchParams.get('access_token')).toBe('temp-jwt')
+    // The token is never placed in the URL (Deepgram rejects that scheme
+    // with 401 for tokens minted by /v1/auth/grant, verified against the
+    // live API) — it goes through the Sec-WebSocket-Protocol subprotocol
+    // list instead, which the browser sends as part of the handshake.
+    expect(url.searchParams.has('access_token')).toBe(false)
+    expect(instance.protocols).toEqual(['bearer', 'temp-jwt'])
   })
 
   it('5. onStart fires once the connection opens and recording begins', async () => {

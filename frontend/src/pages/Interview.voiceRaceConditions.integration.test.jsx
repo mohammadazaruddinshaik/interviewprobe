@@ -1,14 +1,12 @@
 // @vitest-environment jsdom
 //
-// Task 43 — hardening/production-QA. Exercises the REAL
-// useVoiceInterviewSession hook and voiceReducer (only the provider factory
-// is faked, same pattern as Interview.remoteStt.integration.test.jsx)
-// through Interview.jsx, for race-condition scenarios not already covered
-// at the reducer-unit or provider-unit level:
+// Hardening/production-QA. Exercises the REAL useVoiceInterviewSession hook
+// and voiceReducer (only the provider factory is faked, same pattern as
+// Interview.remoteStt.integration.test.jsx) through Interview.jsx, for
+// race-condition scenarios not already covered at the reducer-unit or
+// provider-unit level:
 //
 //   Case A — manual stop during automatic TTS must not auto-start the mic
-//   Case C — disabling voice mode during TTS leaves no stale callback that
-//            can start STT once it fires late
 //   Case G — an STT error during a candidate response is recoverable,
 //            never auto-submits, and never discards an already-accumulated
 //            transcript
@@ -21,7 +19,8 @@
 // supersedes the first" / "stopping while still awaiting..." cases), and
 // the UI structurally cannot fire two overlapping replay/listen clicks
 // (each button toggles state synchronously on click, before a second click
-// can land).
+// can land). The former Case C (disabling voice mode mid-TTS) no longer
+// applies — voice is the interview now, with no mode to disable.
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -81,12 +80,11 @@ function renderInterview() {
   )
 }
 
-async function enterVoiceMode() {
+async function renderReadyInterview() {
   renderInterview()
   await waitFor(() => expect(screen.getByText(QUESTION_TEXT)).toBeTruthy())
-  fireEvent.click(screen.getByRole('button', { name: /Voice mode/ }))
-  // Entering voice mode auto-speaks the question — wait for the speaker
-  // button to flip into its "speaking" (Stop) state.
+  // The room auto-speaks the question as soon as it's ready — wait for the
+  // speaker button to flip into its "speaking" (Stop) state.
   await waitFor(() => expect(screen.getByRole('button', { name: 'Stop', hidden: true })).toBeTruthy())
 }
 
@@ -106,7 +104,7 @@ describe('voice race conditions (real hook + real reducer, faked providers)', ()
   })
 
   it('Case A: manually stopping automatic TTS does not auto-start the microphone', async () => {
-    await enterVoiceMode()
+    await renderReadyInterview()
     const ttsCallbacks = fakeTts._callbacks()
     ttsCallbacks.onStart()
 
@@ -134,30 +132,8 @@ describe('voice race conditions (real hook + real reducer, faked providers)', ()
     await waitFor(() => expect(screen.getByRole('button', { name: 'Replay question' })).toBeTruthy())
   })
 
-  it('Case C: disabling voice mode during TTS leaves no stale callback able to start STT', async () => {
-    await enterVoiceMode()
-    const ttsCallbacks = fakeTts._callbacks()
-    ttsCallbacks.onStart()
-
-    // Exit voice mode entirely while the question is still "speaking".
-    fireEvent.click(screen.getByRole('button', { name: 'Switch to text' }))
-    await waitFor(() =>
-      expect(screen.getByPlaceholderText('Explain your approach, reasoning, and trade-offs...')).toBeTruthy(),
-    )
-    expect(fakeTts.stop).toHaveBeenCalled()
-
-    // The original attempt's provider now fires its natural-end callback
-    // late (a real race: the network/SDK callback was already in flight
-    // when disableVoiceMode() ran). It must be a no-op — no stale mic start.
-    ttsCallbacks.onNaturalEnd()
-
-    expect(fakeStt.start).not.toHaveBeenCalled()
-    // Still on the plain text UI — nothing about the mode was disturbed.
-    expect(screen.getByPlaceholderText('Explain your approach, reasoning, and trade-offs...')).toBeTruthy()
-  })
-
   it('Case G: an STT error during a candidate response is recoverable, preserves the transcript, and never auto-submits', async () => {
-    await enterVoiceMode()
+    await renderReadyInterview()
     fakeTts._callbacks().onStopped() // let the automatic question-speech settle out of the way
 
     fireEvent.click(await screen.findByRole('button', { name: 'Speak answer' }))

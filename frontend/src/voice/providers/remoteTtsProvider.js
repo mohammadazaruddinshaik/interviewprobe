@@ -16,10 +16,10 @@ function detectSupport() {
 
 // The Azure-backed implementation of the TtsProvider contract
 // (ttsProvider.js) — this module is the ONLY place that knows synthesis
-// happens on the backend; everything it returns is indistinguishable from
-// browserTtsProvider.js to any caller. No Azure credential or Azure-specific
-// identifier ever appears here or crosses the network from this side: the
-// request carries only { text, voice: "default" }.
+// happens on the backend; everything it returns matches the same
+// TtsProvider shape any implementation of this contract must. No Azure
+// credential or Azure-specific identifier ever appears here or crosses the
+// network from this side: the request carries only { text, voice: "default" }.
 export function createRemoteTtsProvider() {
   const isSupported = detectSupport()
 
@@ -27,9 +27,9 @@ export function createRemoteTtsProvider() {
   // Every async continuation (the fetch resolving, the body finishing, a
   // playback event) checks `current === entry` before doing anything
   // observable, so a superseded or stopped attempt's late-arriving work is
-  // always inert — the same identity-guard shape browserTtsProvider.js uses
-  // for utterances, just spanning a network request instead of a single
-  // synchronous call.
+  // always inert — the same identity-guard shape remoteSttProvider.js uses
+  // for its own attempts, just spanning a network request instead of a
+  // single synchronous call.
   let current = null
 
   function teardown(entry) {

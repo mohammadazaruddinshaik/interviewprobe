@@ -10,9 +10,9 @@ afterEach(() => {
 
 // Builds a deterministic, mocked useVoiceInterviewSession()-shaped object —
 // exactly what VoiceInterviewView actually receives, so these tests never
-// touch the real hook, SpeechSynthesis, or SpeechRecognition.
+// touch the real hook or any real speech provider.
 function makeVoice(overrides = {}) {
-  const state = { ...createInitialVoiceState(), voiceMode: true, ...overrides.state }
+  const state = { ...createInitialVoiceState(), ...overrides.state }
   return {
     state,
     activeChannel: overrides.activeChannel ?? null,
@@ -22,8 +22,6 @@ function makeVoice(overrides = {}) {
     ttsSupported: overrides.ttsSupported ?? true,
     sttSupported: overrides.sttSupported ?? true,
     commands: {
-      enableVoiceMode: vi.fn(),
-      disableVoiceMode: vi.fn(),
       replayQuestion: vi.fn(),
       stopSpeaking: vi.fn(),
       startListening: vi.fn(),
@@ -170,13 +168,6 @@ describe('VoiceInterviewView', () => {
     } finally {
       window.matchMedia = originalMatchMedia
     }
-  })
-
-  it('exits voice mode via the control bar', () => {
-    const props = baseProps()
-    render(<VoiceInterviewView {...props} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Switch to text' }))
-    expect(props.voice.commands.disableVoiceMode).toHaveBeenCalledOnce()
   })
 
   it('never invents a paraphrased question — renders the exact question text', () => {

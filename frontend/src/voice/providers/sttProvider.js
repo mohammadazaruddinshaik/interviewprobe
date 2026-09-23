@@ -1,6 +1,7 @@
-// The contract every STT provider must satisfy — browser SpeechRecognition
-// today, a remote provider (e.g. Deepgram) later. The voice session only
-// ever talks to this shape; it never knows which concrete provider it's
+// The contract every STT provider must satisfy — currently one concrete
+// implementation (Deepgram, remoteSttProvider.js), kept behind this
+// abstraction rather than called directly so the voice session only ever
+// talks to this shape and never knows which concrete provider it's
 // holding.
 //
 // @typedef {Object} SttStartCallbacks
@@ -11,14 +12,14 @@
 //   never call it, rather than calling it unreliably)
 // @property {(transcript: string) => void} [onInterim] - a provisional,
 //   not-yet-final transcript chunk. Optional: a provider that only supports
-//   final results (like the current browser implementation) never calls it.
+//   final results never calls it.
 // @property {() => void} [onSpeechEnd] - the candidate appears to have
 //   stopped talking; a final transcript is expected shortly
 // @property {(transcript: string) => void} [onFinal] - one finalized
 //   transcript chunk (a delta, not an accumulation). A provider that only
-//   ever captures one utterance per attempt (the browser implementation)
-//   calls this at most once; a provider that supports continuous listening
-//   (a remote streaming provider) may call it any number of times across a
+//   ever captures one utterance per attempt calls this at most once; a
+//   provider that supports continuous listening (like the current
+//   streaming implementation) may call it any number of times across a
 //   single start()...stop() attempt, once per chunk of speech finalized —
 //   the caller is responsible for accumulating chunks (e.g. appending each
 //   to an existing answer), never this contract.

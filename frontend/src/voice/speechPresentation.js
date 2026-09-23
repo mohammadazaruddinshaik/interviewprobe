@@ -90,10 +90,9 @@ function applyPronunciation(text) {
 // Produces the deterministic spoken representation of `text`. Returns a
 // structured result — `text` is the plain-text form to hand to a TTS
 // provider's speak(); `ssml` is reserved as an extension point for a future
-// provider that accepts SSML and is always null today, since no current
-// provider (browserTtsProvider.js, remoteTtsProvider.js) consumes it. Both
-// existing TTS providers keep taking plain text exactly as before — only
-// *which* plain text they're given changes.
+// provider that accepts SSML and is always null today, since the current
+// TTS provider (remoteTtsProvider.js) doesn't consume it — it keeps taking
+// plain text exactly as before, only *which* plain text it's given changes.
 export function createSpeechPresentation(text) {
   if (!text || !text.trim()) {
     return { text: '', ssml: null }

@@ -2,14 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ApiError } from '../api/client.js'
 import { getInterview, startInterview, submitInterviewAnswer } from '../api/interviews.js'
-import AnswerEditor from '../components/interview/AnswerEditor.jsx'
 import InterviewComplete from '../components/interview/InterviewComplete.jsx'
 import InterviewError from '../components/interview/InterviewError.jsx'
-import InterviewHeader from '../components/interview/InterviewHeader.jsx'
 import InterviewLoading from '../components/interview/InterviewLoading.jsx'
-import QuestionPanel from '../components/interview/QuestionPanel.jsx'
 import VoiceInterviewView from '../components/interview/voice/VoiceInterviewView.jsx'
-import VoiceModeToggle from '../components/interview/VoiceModeToggle.jsx'
 import { DIFFICULTY_LABELS, ROLE_LABELS, TOPIC_LABELS } from '../data/interviewCatalog.js'
 import { useVoiceInterviewSession } from '../voice/useVoiceInterviewSession.js'
 
@@ -197,79 +193,24 @@ function Interview() {
     )
   }
 
-  // Text mode is the default and stays completely untouched below; voice
-  // mode swaps the whole QuestionPanel+AnswerEditor pair (plus its own
-  // header) for the dedicated room, but both branches read the exact same
-  // `question`/`answer`/`handleSubmit`/`voice` — there is no second
-  // interview lifecycle, just a different presentation of the same one.
-  if (voice.state.voiceMode) {
-    return (
-      <div className="min-h-screen bg-cream">
-        <VoiceInterviewView
-          voice={voice}
-          question={question}
-          questionLimit={sessionMeta?.questionLimit}
-          roleLabel={ROLE_LABELS[sessionMeta?.role] ?? sessionMeta?.role}
-          difficultyLabel={DIFFICULTY_LABELS[sessionMeta?.difficulty] ?? sessionMeta?.difficulty}
-          topicLabel={TOPIC_LABELS[question?.topic] ?? question?.topic}
-          answer={answer}
-          onAnswerChange={setAnswer}
-          onSubmit={handleSubmit}
-          submitting={isSubmitting}
-          headingRef={questionHeadingRef}
-        />
-
-        {submitError && (
-          <div className="mx-auto max-w-3xl px-6 pb-12 sm:px-8">
-            <p role="alert" aria-live="assertive" className="text-center text-sm text-error">
-              {submitError}
-            </p>
-          </div>
-        )}
-      </div>
-    )
-  }
-
+  // Voice is the interview — the room is the only interview workspace, not
+  // one of two presentations. It reads the exact same
+  // `question`/`answer`/`handleSubmit`/`voice` state this page has always
+  // owned; only the rendering is voice-first now.
   return (
     <div className="min-h-screen bg-cream">
-      <InterviewHeader
+      <VoiceInterviewView
+        voice={voice}
+        question={question}
+        questionLimit={sessionMeta?.questionLimit}
         roleLabel={ROLE_LABELS[sessionMeta?.role] ?? sessionMeta?.role}
         difficultyLabel={DIFFICULTY_LABELS[sessionMeta?.difficulty] ?? sessionMeta?.difficulty}
         topicLabel={TOPIC_LABELS[question?.topic] ?? question?.topic}
-        questionNumber={question?.sequence}
-        questionLimit={sessionMeta?.questionLimit}
-      />
-
-      <VoiceModeToggle
-        enabled={voice.state.voiceMode}
-        onToggle={(next) => (next ? voice.commands.enableVoiceMode() : voice.commands.disableVoiceMode())}
-      />
-
-      <QuestionPanel
-        key={question?.id}
-        questionNumber={question?.sequence}
-        text={question?.text}
-        headingRef={questionHeadingRef}
-        speakerDisabled={voice.activeChannel === 'mic'}
-        isSpeaking={voice.isSpeakerSpeaking}
-        speakerHasError={voice.isSpeakerError}
-        speakerSupported={voice.ttsSupported}
-        onReplay={voice.commands.replayQuestion}
-        onStopSpeaking={voice.commands.stopSpeaking}
-      />
-
-      <AnswerEditor
-        value={answer}
-        onChange={setAnswer}
+        answer={answer}
+        onAnswerChange={setAnswer}
         onSubmit={handleSubmit}
         submitting={isSubmitting}
-        micDisabled={voice.activeChannel === 'speaker'}
-        micState={voice.micUiState}
-        micError={voice.state.error?.source === 'stt' ? voice.state.error.message : null}
-        micSupported={voice.sttSupported}
-        lastTranscriptSeq={voice.state.finalTranscriptSeq}
-        onStartListening={voice.commands.startListening}
-        onStopListening={voice.commands.stopListening}
+        headingRef={questionHeadingRef}
       />
 
       {submitError && (

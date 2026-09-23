@@ -11,18 +11,26 @@ import {
 } from './voiceState.js'
 import { VOICE_ACTION, voiceReducer } from './voiceReducer.js'
 
+// How long PROCESSING (candidate stopped talking, waiting for the
+// provider's final transcript/close) is allowed to sit before this hook
+// gives up waiting and recovers on its own. Deepgram normally follows
+// UtteranceEnd with a final Results message (or a close) within a couple
+// of seconds; this is a generous upper bound for the rare case where
+// neither ever arrives, so the candidate is never left staring at a
+// "Processing…" mic that can no longer be manually stopped (the mic
+// control is disabled specifically while processing).
+export const PROCESSING_TIMEOUT_MS = 8000
+
 // Centralizes everything Interview.jsx used to track as separate flags
-// (activeVoiceChannel, voiceMode, the auto-play/auto-listen refs) behind one
-// reducer and one pair of provider adapters. Interview.jsx now only needs to
-// tell this hook which question is current and read back a small view model
-// plus a handful of commands — it no longer owns any TTS/STT lifecycle
-// detail itself.
+// (activeVoiceChannel, the auto-play/auto-listen refs) behind one reducer
+// and one pair of provider adapters. Interview.jsx only needs to tell this
+// hook which question is current and read back a small view model plus a
+// handful of commands — it never owns any TTS/STT lifecycle detail itself.
 //
 // `onTranscript` is called with each finalized transcript exactly once
 // (keyed by the STT attempt it came from, not by text equality, so a
 // legitimately repeated phrase is never dropped) — this is how a final
-// transcript reaches AnswerEditor's answer text, mirroring what
-// VoiceInputButton's onTranscript callback did before this task.
+// transcript reaches the candidate's answer text.
 //
 // `active` should be false once the interview leaves the 'ready' phase
 // (completed, errored, still loading). Unlike the old per-question
@@ -58,9 +66,9 @@ export function useVoiceInterviewSession({ questionId, questionText, active = tr
       if (!questionText) return
       const attemptId = nextAttemptId()
       dispatch({ type: VOICE_ACTION.SPEAK_REQUESTED, auto, attemptId })
-      // The UI keeps showing questionText verbatim (QuestionPanel reads
-      // question.text directly, never through this hook) — only what's
-      // handed to the TTS provider goes through the deterministic speech
+      // The UI keeps showing questionText verbatim (rendered directly from
+      // the question prop, never through this hook) — only what's handed
+      // to the TTS provider goes through the deterministic speech
       // presentation layer first.
       const presentation = createSpeechPresentation(questionText)
       providers.tts.speak(presentation.text, {
@@ -91,13 +99,6 @@ export function useVoiceInterviewSession({ questionId, questionText, active = tr
   )
 
   // Public commands.
-  const enableVoiceMode = useCallback(() => dispatch({ type: VOICE_ACTION.VOICE_MODE_ENABLED }), [])
-  const disableVoiceMode = useCallback(() => {
-    // TTS is always interrupted by a mode change; the reducer decides
-    // whether a busy mic is left alone (it is, deliberately).
-    providers.tts.stop()
-    dispatch({ type: VOICE_ACTION.VOICE_MODE_DISABLED })
-  }, [providers])
   const replayQuestion = useCallback(() => speakQuestion(false), [speakQuestion])
   const stopSpeaking = useCallback(() => providers.tts.stop(), [providers])
   const startListeningManually = useCallback(() => startListening(false), [startListening])
@@ -125,17 +126,12 @@ export function useVoiceInterviewSession({ questionId, questionText, active = tr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [questionId])
 
-  // Speak the current question automatically, at most once per question,
-  // whenever voice mode is (or becomes) on. Reset when voice mode turns off
-  // so re-enabling it speaks the current question fresh rather than staying
-  // silent because "we already spoke this one" — see QuestionSpeaker's
-  // Task 35/36 history for why this must not fire twice on a fresh mount
-  // whose voiceMode starts already true: that scenario never happens here,
-  // since voiceMode always starts false and only flips true from a later,
-  // user-triggered render, well outside any mount-time double-invocation.
+  // Speak the current question automatically, at most once per question.
+  // Voice is the whole interview now, not a toggle, so this fires whenever
+  // the session is active and at rest — no separate "voice mode" gate.
   const autoSpokenQuestionIdRef = useRef(null)
   useEffect(() => {
-    if (!state.voiceMode) {
+    if (!active) {
       autoSpokenQuestionIdRef.current = null
       return
     }
@@ -144,7 +140,7 @@ export function useVoiceInterviewSession({ questionId, questionText, active = tr
     if (autoSpokenQuestionIdRef.current === questionId) return
     autoSpokenQuestionIdRef.current = questionId
     speakQuestion(true)
-  }, [state.voiceMode, state.status, questionId, questionText, speakQuestion])
+  }, [active, state.status, questionId, questionText, speakQuestion])
 
   // The one place automatic listening is decided: only ever after automatic
   // playback's own natural end, never a manual replay's.
@@ -160,6 +156,48 @@ export function useVoiceInterviewSession({ questionId, questionText, active = tr
       dispatch({ type: VOICE_ACTION.SETTLE })
     }
   }, [state.status, state.isAutomaticSpeech, startListening])
+
+  // Mirrors the latest state for the PROCESSING-timeout callback below,
+  // which runs on a plain `setTimeout` outside React's render cycle and so
+  // can't read `state` directly without risking a stale closure over
+  // whatever it was when the effect that scheduled it last ran.
+  const stateRef = useRef(state)
+  useEffect(() => {
+    stateRef.current = state
+  }, [state])
+
+  // Recovers from a stuck PROCESSING state: normally STT_SPEECH_ENDED
+  // (Deepgram's UtteranceEnd) is followed shortly by either another
+  // STT_FINAL (back to CANDIDATE_LISTENING) or STT_STOPPED/STT_ERROR (back
+  // to rest) — see voiceReducer.js. If neither ever arrives, the mic
+  // control is left disabled indefinitely (VoiceControls disables it while
+  // processing) even though the candidate can still submit whatever was
+  // already captured. This effect is keyed on `sttAttemptId`, exactly like
+  // every other STT lifecycle event, so a question change or a fresh
+  // listening attempt (both of which bump it) clears the previous timer
+  // before this one can ever fire for the wrong attempt — the same
+  // attempt-id race protection the rest of this hook already relies on.
+  useEffect(() => {
+    if (state.status !== VOICE_STATUS.PROCESSING) return
+    const attemptId = state.sttAttemptId
+    const timeoutId = setTimeout(() => {
+      // Belt-and-suspenders on top of the effect's own dependency-driven
+      // cleanup below: only recover if this is still the current attempt
+      // and it's still stuck — never tear down a connection some newer,
+      // legitimate attempt has since taken over.
+      if (stateRef.current.sttAttemptId !== attemptId) return
+      if (stateRef.current.status !== VOICE_STATUS.PROCESSING) return
+      // stop() tears down the provider's connection and fires its own
+      // onStopped callback (wired in startListening above), which
+      // dispatches STT_STOPPED for this exact attemptId — the identical
+      // path a manual stop takes. That reducer case returns to rest
+      // without touching finalTranscript/finalTranscriptSeq, so whatever
+      // was already captured is preserved, and nothing here ever submits
+      // an answer.
+      providers.stt.stop()
+    }, PROCESSING_TIMEOUT_MS)
+    return () => clearTimeout(timeoutId)
+  }, [state.status, state.sttAttemptId, providers])
 
   // Delivers each finalized transcript chunk to the caller exactly once,
   // keyed by finalTranscriptSeq — a monotonic counter bumped on every
@@ -206,8 +244,6 @@ export function useVoiceInterviewSession({ questionId, questionText, active = tr
     ttsSupported: providers.tts.isSupported,
     sttSupported: providers.stt.isSupported,
     commands: {
-      enableVoiceMode,
-      disableVoiceMode,
       replayQuestion,
       stopSpeaking,
       startListening: startListeningManually,

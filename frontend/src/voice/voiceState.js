@@ -2,9 +2,12 @@
 // "the interviewer is speaking" and "the candidate is speaking" because these
 // are branches of one enum, not independent booleans — impossible states are
 // structurally unrepresentable rather than merely guarded against.
+//
+// Voice is the interview — there is no separate "text mode" to fall back to
+// or toggle away from, so IDLE (nothing speaking/listening yet) is the only
+// rest state.
 export const VOICE_STATUS = {
-  TEXT_MODE: 'TEXT_MODE', // voice mode is off; voice controls still work manually
-  IDLE: 'IDLE', // voice mode on, nothing speaking/listening
+  IDLE: 'IDLE',
   INTERVIEWER_SPEAKING: 'INTERVIEWER_SPEAKING',
   INTERVIEWER_FINISHED: 'INTERVIEWER_FINISHED', // transient: TTS just ended naturally
   CANDIDATE_LISTENING: 'CANDIDATE_LISTENING', // mic open, no speech detected yet
@@ -17,8 +20,7 @@ const MIC_BUSY_STATUSES = [VOICE_STATUS.CANDIDATE_LISTENING, VOICE_STATUS.CANDID
 
 export function createInitialVoiceState() {
   return {
-    status: VOICE_STATUS.TEXT_MODE,
-    voiceMode: false,
+    status: VOICE_STATUS.IDLE,
     questionId: null,
     // Whether the in-flight/last TTS attempt was the automatic (question-
     // triggered) one, as opposed to a manual replay — this is what decides
@@ -64,10 +66,9 @@ export function shouldAutoStartListening(state) {
   return state.status === VOICE_STATUS.INTERVIEWER_FINISHED && state.isAutomaticSpeech === true
 }
 
-// Maps the full state machine onto the small set of visual states
-// VoiceInputButton already renders (idle/listening/processing/error) — the
-// UI is deliberately not redesigned for this task, so CANDIDATE_LISTENING
-// and CANDIDATE_SPEAKING both read as "listening" for now.
+// Maps the full state machine onto the small set of visual mic states the
+// room's controls render (idle/listening/processing/error) —
+// CANDIDATE_LISTENING and CANDIDATE_SPEAKING both read as "listening".
 export function getMicUiState(state) {
   if (state.status === VOICE_STATUS.CANDIDATE_LISTENING || state.status === VOICE_STATUS.CANDIDATE_SPEAKING) {
     return 'listening'
@@ -85,13 +86,8 @@ export function isSpeakerError(state) {
   return state.status === VOICE_STATUS.ERROR && state.error?.source === 'tts'
 }
 
-const START_SPEAKING_ALLOWED = [VOICE_STATUS.IDLE, VOICE_STATUS.TEXT_MODE, VOICE_STATUS.ERROR]
-const START_LISTENING_ALLOWED = [
-  VOICE_STATUS.IDLE,
-  VOICE_STATUS.TEXT_MODE,
-  VOICE_STATUS.ERROR,
-  VOICE_STATUS.INTERVIEWER_FINISHED,
-]
+const START_SPEAKING_ALLOWED = [VOICE_STATUS.IDLE, VOICE_STATUS.ERROR]
+const START_LISTENING_ALLOWED = [VOICE_STATUS.IDLE, VOICE_STATUS.ERROR, VOICE_STATUS.INTERVIEWER_FINISHED]
 
 export function canStartSpeaking(state) {
   return START_SPEAKING_ALLOWED.includes(state.status)

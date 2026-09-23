@@ -62,7 +62,7 @@ function pickMimeType() {
   }
 }
 
-function buildStreamUrl(accessToken) {
+function buildStreamUrl() {
   const params = new URLSearchParams()
   params.set('model', DEEPGRAM_MODEL)
   params.set('language', DEEPGRAM_LANGUAGE)
@@ -72,13 +72,20 @@ function buildStreamUrl(accessToken) {
   params.set('vad_events', 'true')
   params.set('utterance_end_ms', String(UTTERANCE_END_MS))
   for (const term of KEYTERMS) params.append('keyterm', term)
-  // The short-lived token, passed as a query parameter — the browser's
-  // native WebSocket API cannot set an Authorization header, and Deepgram's
-  // Sec-WebSocket-Protocol subprotocol scheme is unreliable for JWTs (see
-  // github.com/orgs/deepgram/discussions/1470). This is Deepgram's
-  // documented mechanism for temporary-token browser auth.
-  params.set('access_token', accessToken)
   return `${DEEPGRAM_LISTEN_URL}?${params.toString()}`
+}
+
+// The short-lived token is passed via the WebSocket subprotocol handshake
+// (`Sec-WebSocket-Protocol: bearer, <token>`) — the browser's native
+// WebSocket API cannot set an Authorization header, so this is the only
+// way to authenticate without putting the token in the URL. Verified live
+// against Deepgram's API: the `?access_token=` query-parameter scheme (an
+// older workaround some third-party discussions suggested) is rejected
+// with HTTP 401 for tokens minted by /v1/auth/grant — Deepgram expects the
+// `bearer` subprotocol for these short-lived tokens specifically (`token`
+// is for permanent API keys only, and is also rejected here).
+function buildSubprotocols(accessToken) {
+  return ['bearer', accessToken]
 }
 
 function mapGetUserMediaError(err) {
@@ -99,10 +106,10 @@ function mapGetUserMediaError(err) {
 
 // The Deepgram-backed implementation of the SttProvider contract
 // (sttProvider.js) — this module is the ONLY place that knows streaming
-// happens via Deepgram; everything it returns is indistinguishable from
-// browserSttProvider.js to any caller. The permanent Deepgram key never
-// reaches this code: only a short-lived token fetched from this app's own
-// backend (POST /voice/stt/token) is ever held here, and only for the
+// happens via Deepgram; everything it returns matches the same SttProvider
+// shape any implementation of this contract must. The permanent Deepgram
+// key never reaches this code: only a short-lived token fetched from this
+// app's own backend (POST /voice/stt/token) is ever held here, and only for the
 // duration of one connection attempt.
 export function createRemoteSttProvider() {
   const isSupported = detectSupport()
@@ -214,7 +221,7 @@ export function createRemoteSttProvider() {
       return
     }
 
-    const ws = new window.WebSocket(buildStreamUrl(tokenData.access_token))
+    const ws = new window.WebSocket(buildStreamUrl(), buildSubprotocols(tokenData.access_token))
     entry.ws = ws
 
     ws.onopen = () => {

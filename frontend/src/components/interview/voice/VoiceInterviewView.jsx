@@ -8,8 +8,8 @@ import VoiceInterviewHeader from './VoiceInterviewHeader.jsx'
 // The dedicated voice room. A pure presentation layer over
 // useVoiceInterviewSession()'s return value (`voice`) — every child here
 // just renders a slice of that same state and calls its commands; nothing
-// in this tree owns TTS/STT lifecycle, calls SpeechSynthesis/
-// SpeechRecognition directly, or keeps a second copy of the answer.
+// in this tree owns TTS/STT lifecycle, talks to a speech provider
+// directly, or keeps a second copy of the answer.
 function VoiceInterviewView({
   voice,
   interviewer = INTERVIEWER,
@@ -88,7 +88,6 @@ function VoiceInterviewView({
         canSubmit={canSubmit}
         submitting={submitting}
         onSubmit={onSubmit}
-        onExitVoiceMode={commands.disableVoiceMode}
       />
     </div>
   )

@@ -1,10 +1,10 @@
 import Button from '../../ui/Button.jsx'
-import { HeadsetIcon, MicIcon, SpeakerIcon, StopIcon } from '../../ui/icons.jsx'
+import { MicIcon, SpeakerIcon, StopIcon } from '../../ui/icons.jsx'
 
 // A compact bar exposing only existing capabilities (replay/stop, mic
-// start/stop, submit, exit voice mode) — no new interview actions. Every
-// control here calls straight into the commands useVoiceInterviewSession()
-// already exposes; this component holds no voice logic of its own.
+// start/stop, submit) — no new interview actions. Every control here calls
+// straight into the commands useVoiceInterviewSession() already exposes;
+// this component holds no voice logic of its own.
 function VoiceControls({
   isSpeakerSpeaking,
   speakerDisabled,
@@ -21,8 +21,6 @@ function VoiceControls({
   canSubmit,
   submitting,
   onSubmit,
-
-  onExitVoiceMode,
 }) {
   const isListening = micUiState === 'listening'
   const isProcessing = micUiState === 'processing'
@@ -46,16 +44,6 @@ function VoiceControls({
   return (
     <div className="border-t border-line/70 bg-white/50">
       <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-center gap-3 px-6 py-4 sm:px-8">
-        <button
-          type="button"
-          onClick={onExitVoiceMode}
-          aria-pressed="true"
-          className="inline-flex items-center gap-2 rounded-full border border-accent/40 bg-accent-soft px-4 py-2 text-sm font-medium text-accent transition-colors duration-200 hover:bg-accent-soft/70"
-        >
-          <HeadsetIcon className="h-4 w-4" />
-          Switch to text
-        </button>
-
         {speakerSupported ? (
           <button
             type="button"

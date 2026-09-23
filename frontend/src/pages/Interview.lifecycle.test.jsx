@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 //
-// Task 55 — focused coverage for the TEXT MODE interview lifecycle in
-// Interview.jsx: loading, rendering the current question, resumability,
-// answering, submitting, the next-question/completion transitions, and
-// API error handling. Voice mode is exercised separately (see
-// Interview.modeSwitch.test.jsx / Interview.remoteStt.integration.test.jsx
-// / Interview.voiceRaceConditions.integration.test.jsx) — every test here
-// fixes `voiceMode: false`, same mocking approach as those files.
+// Focused coverage for the interview LIFECYCLE in Interview.jsx: loading,
+// rendering the current question, resumability, answering, submitting, the
+// next-question/completion transitions, and API error handling. Voice is
+// the only interview experience now — the room renders unconditionally as
+// soon as the interview is ready, so these lifecycle assertions exercise it
+// directly rather than a separate text UI (which no longer exists). The
+// voice-specific behaviors (TTS/STT sequencing, transcripts, races) are
+// covered separately in Interview.remoteStt.integration.test.jsx and
+// Interview.voiceRaceConditions.integration.test.jsx.
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { fireEvent } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -40,9 +42,9 @@ function deferred() {
   return { promise, resolve, reject }
 }
 
-function mockTextMode() {
+function mockVoiceSession() {
   useVoiceInterviewSession.mockReturnValue({
-    state: { ...createInitialVoiceState(), voiceMode: false },
+    state: createInitialVoiceState(),
     activeChannel: null,
     isSpeakerSpeaking: false,
     isSpeakerError: false,
@@ -50,8 +52,6 @@ function mockTextMode() {
     ttsSupported: true,
     sttSupported: true,
     commands: {
-      enableVoiceMode: vi.fn(),
-      disableVoiceMode: vi.fn(),
       replayQuestion: vi.fn(),
       stopSpeaking: vi.fn(),
       startListening: vi.fn(),
@@ -72,10 +72,10 @@ function renderInterview(sessionId = 'session-1') {
   )
 }
 
-describe('Interview.jsx text-mode lifecycle', () => {
+describe('Interview.jsx lifecycle', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockTextMode()
+    mockVoiceSession()
   })
 
   afterEach(() => {
@@ -333,5 +333,22 @@ describe('Interview.jsx text-mode lifecycle', () => {
         'Something went wrong while submitting your answer.',
       ),
     )
+  })
+
+  // -------------------------------------------------------------------
+  // Voice-first rendering — there is no text/voice choice anymore
+  // -------------------------------------------------------------------
+
+  it('opens directly into the voice interview room, with no mode choice and no typed-answer-only UI', async () => {
+    await renderReadyInterview()
+
+    // The voice room's identity and controls are present unconditionally.
+    expect(screen.getAllByText('Azaruddin').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByRole('button', { name: 'Replay question' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Speak answer' })).toBeTruthy()
+
+    // No text/voice mode toggle or "switch to text" escape hatch exists.
+    expect(screen.queryByRole('button', { name: /voice mode/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /switch to text/i })).toBeNull()
   })
 })

@@ -1,11 +1,10 @@
 // @vitest-environment jsdom
 //
-// Task 41 §22 — the complete application path with a mocked remote STT
-// provider, exercising the REAL useVoiceInterviewSession hook and
-// voiceReducer (unlike Interview.modeSwitch.test.jsx, which mocks the hook
-// itself). Only the provider factory is faked, matching how remote mode is
-// actually selected in production (VITE_STT_MODE=remote just swaps which
-// object createVoiceProviders() returns) — VoiceInterviewView,
+// The complete application path with a mocked remote STT provider,
+// exercising the REAL useVoiceInterviewSession hook and voiceReducer. Only
+// the provider factory is faked, matching how remote mode is actually
+// selected in production (VITE_STT_MODE=remote just swaps which object
+// createVoiceProviders() returns) — VoiceInterviewView,
 // useVoiceInterviewSession, and Interview.jsx never know a fake/Deepgram
 // implementation is behind it.
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -17,9 +16,9 @@ const { fakeTts, fakeStt } = vi.hoisted(() => {
     return {
       isSupported: true,
       // Immediately reports "stopped" (never onNaturalEnd/onError) so the
-      // auto-speak-on-voice-mode-enable effect gets out of the way without
-      // ever locking the mic to the speaker or auto-starting listening —
-      // this test drives listening manually to exercise the STT path.
+      // automatic question-speech effect gets out of the way without ever
+      // locking the mic to the speaker or auto-starting listening — this
+      // test drives listening manually to exercise the STT path.
       speak: vi.fn((text, callbacks) => callbacks?.onStopped?.()),
       stop: vi.fn(),
       dispose: vi.fn(),
@@ -79,15 +78,16 @@ describe('remote STT integration: VoiceInterviewView -> useVoiceInterviewSession
     cleanup()
   })
 
-  async function enterVoiceMode() {
+  // Voice is the interview — the room (and its "Speak answer" control) is
+  // present as soon as the interview is ready, with no mode toggle to click.
+  async function renderReadyInterview() {
     renderInterview()
     await waitFor(() => expect(screen.getByText(QUESTION_TEXT)).toBeTruthy())
-    fireEvent.click(screen.getByRole('button', { name: /Voice mode/ }))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Speak answer' })).toBeTruthy())
   }
 
   it('interim and final transcripts from the remote provider reach the answer textarea, and manual submission uses the existing API', async () => {
-    await enterVoiceMode()
+    await renderReadyInterview()
 
     fireEvent.click(screen.getByRole('button', { name: 'Speak answer' }))
     expect(fakeStt.start).toHaveBeenCalledOnce()
@@ -115,7 +115,7 @@ describe('remote STT integration: VoiceInterviewView -> useVoiceInterviewSession
   })
 
   it('multiple final chunks within one listening session accumulate into the same answer', async () => {
-    await enterVoiceMode()
+    await renderReadyInterview()
 
     fireEvent.click(screen.getByRole('button', { name: 'Speak answer' }))
     const callbacks = fakeStt._callbacks()
@@ -130,7 +130,7 @@ describe('remote STT integration: VoiceInterviewView -> useVoiceInterviewSession
   })
 
   it('manually editing the transcript is preserved — a later final chunk appends rather than overwriting it', async () => {
-    await enterVoiceMode()
+    await renderReadyInterview()
 
     fireEvent.click(screen.getByRole('button', { name: 'Speak answer' }))
     const callbacks = fakeStt._callbacks()
@@ -148,7 +148,7 @@ describe('remote STT integration: VoiceInterviewView -> useVoiceInterviewSession
   })
 
   it('an explicit stop ends listening without submitting or fabricating an answer', async () => {
-    await enterVoiceMode()
+    await renderReadyInterview()
 
     fireEvent.click(screen.getByRole('button', { name: 'Speak answer' }))
     const callbacks = fakeStt._callbacks()
@@ -171,15 +171,4 @@ describe('remote STT integration: VoiceInterviewView -> useVoiceInterviewSession
     expect(submitInterviewAnswer).not.toHaveBeenCalled()
   })
 
-  it('voice mode can return to text mode safely after a transcript was captured', async () => {
-    await enterVoiceMode()
-    fireEvent.click(screen.getByRole('button', { name: 'Speak answer' }))
-    fakeStt._callbacks().onFinal('captured answer')
-    await waitFor(() => expect(screen.getByLabelText('Your answer').value).toBe('captured answer'))
-
-    fireEvent.click(screen.getByRole('button', { name: 'Switch to text' }))
-
-    await waitFor(() => expect(screen.getByPlaceholderText('Explain your approach, reasoning, and trade-offs...')).toBeTruthy())
-    expect(screen.getByPlaceholderText('Explain your approach, reasoning, and trade-offs...').value).toBe('captured answer')
-  })
 })

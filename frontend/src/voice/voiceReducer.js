@@ -1,8 +1,6 @@
 import { canStartListening, canStartSpeaking, VOICE_STATUS } from './voiceState.js'
 
 export const VOICE_ACTION = {
-  VOICE_MODE_ENABLED: 'VOICE_MODE_ENABLED',
-  VOICE_MODE_DISABLED: 'VOICE_MODE_DISABLED',
   QUESTION_CHANGED: 'QUESTION_CHANGED',
   SPEAK_REQUESTED: 'SPEAK_REQUESTED',
   TTS_STARTED: 'TTS_STARTED',
@@ -23,10 +21,6 @@ export const VOICE_ACTION = {
 
 const MIC_BUSY = [VOICE_STATUS.CANDIDATE_LISTENING, VOICE_STATUS.CANDIDATE_SPEAKING, VOICE_STATUS.PROCESSING]
 
-function restStatus(state) {
-  return state.voiceMode ? VOICE_STATUS.IDLE : VOICE_STATUS.TEXT_MODE
-}
-
 // Every lifecycle action (TTS_*, STT_*) carries the attemptId it belongs to.
 // Comparing it against the reducer's own counter is what makes a stale event
 // from a superseded attempt a guaranteed no-op, regardless of what caused
@@ -40,32 +34,13 @@ function isCurrentSttAttempt(state, action) {
 
 export function voiceReducer(state, action) {
   switch (action.type) {
-    case VOICE_ACTION.VOICE_MODE_ENABLED: {
-      if (state.voiceMode) return state
-      return { ...state, voiceMode: true, status: VOICE_STATUS.IDLE, error: null }
-    }
-
-    case VOICE_ACTION.VOICE_MODE_DISABLED: {
-      if (!state.voiceMode) return state
-      // A microphone already recording is left alone — the candidate, not a
-      // mode toggle, controls when their own capture stops (unchanged from
-      // the existing behavior this replaces).
-      const micBusy = MIC_BUSY.includes(state.status)
-      return {
-        ...state,
-        voiceMode: false,
-        status: micBusy ? state.status : VOICE_STATUS.TEXT_MODE,
-        error: micBusy ? state.error : null,
-      }
-    }
-
     case VOICE_ACTION.QUESTION_CHANGED: {
       // Bumping both attempt ids orphans any callback still in flight for
       // the previous question, even if nothing new has started yet.
       return {
         ...state,
         questionId: action.questionId,
-        status: restStatus(state),
+        status: VOICE_STATUS.IDLE,
         isAutomaticSpeech: false,
         interimTranscript: '',
         finalTranscript: '',
@@ -104,7 +79,7 @@ export function voiceReducer(state, action) {
       if (!isCurrentTtsAttempt(state, action) || state.status !== VOICE_STATUS.INTERVIEWER_SPEAKING) return state
       // Deliberately returns to rest, never to INTERVIEWER_FINISHED — a
       // cancellation must never be interpreted as a natural completion.
-      return { ...state, status: restStatus(state) }
+      return { ...state, status: VOICE_STATUS.IDLE }
     }
 
     case VOICE_ACTION.TTS_ERROR: {
@@ -169,7 +144,7 @@ export function voiceReducer(state, action) {
     case VOICE_ACTION.STT_STOPPED: {
       if (!isCurrentSttAttempt(state, action)) return state
       if (!MIC_BUSY.includes(state.status)) return state
-      return { ...state, status: restStatus(state), interimTranscript: '' }
+      return { ...state, status: VOICE_STATUS.IDLE, interimTranscript: '' }
     }
 
     case VOICE_ACTION.STT_ERROR: {
@@ -179,7 +154,7 @@ export function voiceReducer(state, action) {
 
     case VOICE_ACTION.CLEAR_ERROR: {
       if (state.status !== VOICE_STATUS.ERROR) return state
-      return { ...state, status: restStatus(state), error: null }
+      return { ...state, status: VOICE_STATUS.IDLE, error: null }
     }
 
     // Dispatched by the session hook when INTERVIEWER_FINISHED was reached
@@ -188,7 +163,7 @@ export function voiceReducer(state, action) {
     // transient state forever.
     case VOICE_ACTION.SETTLE: {
       if (state.status !== VOICE_STATUS.INTERVIEWER_FINISHED) return state
-      return { ...state, status: restStatus(state) }
+      return { ...state, status: VOICE_STATUS.IDLE }
     }
 
     default:
