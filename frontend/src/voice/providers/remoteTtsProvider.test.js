@@ -119,6 +119,49 @@ describe('remoteTtsProvider (fake fetch + Audio, no real network or Azure call)'
     expect(onStopped).not.toHaveBeenCalled()
   })
 
+  it('a rejected play() promise fires onError — never left unhandled, never stuck', async () => {
+    class RejectingAudio extends FakeAudio {
+      play() {
+        this.playCallCount += 1
+        // The browser blocked/interrupted playback before it could start
+        // (e.g. an autoplay-policy NotAllowedError) — the promise rejects
+        // without ever calling onplay/onended/onerror.
+        return Promise.reject(new DOMException('play() failed', 'NotAllowedError'))
+      }
+    }
+    globalThis.window = { Audio: RejectingAudio }
+
+    const provider = createRemoteTtsProvider()
+    const onError = vi.fn()
+    const onStart = vi.fn()
+    const onStopped = vi.fn()
+    provider.speak('hello', { onError, onStart, onStopped })
+    await flush()
+
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: 'playback-failed' }))
+    expect(onStart).not.toHaveBeenCalled()
+    expect(onStopped).not.toHaveBeenCalled()
+  })
+
+  it('a resolved play() promise alone (no onplay event) is not treated as an error', async () => {
+    let capturedAudio = null
+    class CapturingAudio extends FakeAudio {
+      constructor(src) {
+        super(src)
+        capturedAudio = this
+      }
+    }
+    globalThis.window = { Audio: CapturingAudio }
+
+    const provider = createRemoteTtsProvider()
+    const onError = vi.fn()
+    provider.speak('hello', { onError })
+    await flush()
+
+    expect(onError).not.toHaveBeenCalled()
+    expect(capturedAudio.playCallCount).toBe(1)
+  })
+
   it('playback finishing naturally fires onNaturalEnd, never onStopped', async () => {
     let capturedAudio = null
     class CapturingAudio extends FakeAudio {

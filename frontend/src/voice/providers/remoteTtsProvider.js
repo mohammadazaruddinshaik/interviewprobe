@@ -117,16 +117,37 @@ export function createRemoteTtsProvider() {
           callbacks.onError?.(createVoiceError('playback-failed', 'Voice playback failed. Please try again.'))
         }
 
-        // play() rejects if playback is interrupted before it starts (e.g.
-        // a near-simultaneous stop()/supersede already called pause()) —
-        // the current-entry guard makes that rejection a no-op rather than
-        // a spurious onError.
-        audio.play()?.catch?.(() => {
-          if (current !== entry) return
-          current = null
-          teardown(entry)
-          callbacks.onError?.(createVoiceError('playback-failed', 'Voice playback failed. Please try again.'))
-        })
+        // play() returns a Promise that either resolves (playback genuinely
+        // started — `onplay` above already signals this to the caller, so
+        // the resolution branch here has nothing further to do) or rejects
+        // (e.g. the browser's autoplay policy blocked it, or playback was
+        // interrupted before it started by a near-simultaneous stop()/
+        // supersede that already called pause()). Both branches are handled
+        // explicitly so a rejection can never be left unhandled. `playPromise`
+        // is guarded rather than optionally-chained into `.then().catch()`
+        // directly: older/non-standard environments can return `undefined`
+        // from play(), and `undefined?.then(...).catch(...)` would throw
+        // (the `?.` only protects the `.then` call, not the `.catch` after
+        // it) — this guard keeps both branches safe either way. The
+        // current-entry guard inside the rejection branch makes a rejection
+        // from an already-stopped/superseded attempt a no-op rather than a
+        // spurious onError.
+        const playPromise = audio.play()
+        if (playPromise && typeof playPromise.then === 'function') {
+          playPromise.then(
+            () => {
+              // Resolved: playback genuinely started. Nothing further to do
+              // here — `onplay` (registered above) is what signals this to
+              // the caller via callbacks.onStart.
+            },
+            () => {
+              if (current !== entry) return
+              current = null
+              teardown(entry)
+              callbacks.onError?.(createVoiceError('playback-failed', 'Voice playback failed. Please try again.'))
+            },
+          )
+        }
       })
       .catch((error) => {
         if (current !== entry) return // aborted because stopped/superseded — not a real failure

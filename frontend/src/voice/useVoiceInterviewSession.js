@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react'
+import { createVoiceError } from './errors.js'
 import { createVoiceProviders } from './providers/index.js'
 import { buildSpokenQuestion, createSpeechPresentation } from './speechPresentation.js'
 import {
@@ -20,6 +21,22 @@ import { VOICE_ACTION, voiceReducer } from './voiceReducer.js'
 // "Processing…" mic that can no longer be manually stopped (the mic
 // control is disabled specifically while processing).
 export const PROCESSING_TIMEOUT_MS = 8000
+
+// How long INTERVIEWER_SPEAKING is allowed to sit before this hook gives up
+// waiting for a natural end (or an error) and recovers on its own. This
+// covers a distinct failure from the ones remoteTtsProvider.js's own
+// onerror/play().catch() already handle instantly: audio that neither
+// starts nor errors out — playback silently deadlocked (e.g. the browser's
+// autoplay policy blocked it without rejecting the play() promise, most
+// plausible after a slow backend cold start eats into the click's transient
+// activation window) — where neither TTS_NATURAL_END nor TTS_ERROR would
+// otherwise ever arrive. 20s is generous enough to cover a slow blob
+// fetch/decode plus a realistically long spoken interview question (these
+// are short, LLM-generated prompts, not monologues) with margin, while
+// still bounded — a genuine playback failure is already reported by the
+// provider's own error paths well before this ever fires, so this timeout
+// is never what a real error waits on.
+export const TTS_PLAYBACK_TIMEOUT_MS = 20000
 
 // Centralizes everything Interview.jsx used to track as separate flags
 // (activeVoiceChannel, the auto-play/auto-listen refs) behind one reducer
@@ -232,6 +249,51 @@ export function useVoiceInterviewSession({
     }, PROCESSING_TIMEOUT_MS)
     return () => clearTimeout(timeoutId)
   }, [state.status, state.sttAttemptId, providers])
+
+  // Recovers from a stuck INTERVIEWER_SPEAKING state — the TTS-playback
+  // counterpart to the PROCESSING-timeout recovery above, same shape and
+  // same reasoning: a bounded outer safety net for the rare case neither of
+  // remoteTtsProvider.js's own resolution paths (TTS_NATURAL_END, TTS_ERROR)
+  // ever arrives, e.g. play() neither resolves/starts nor rejects. Without
+  // this, the room would be left showing "Interviewer speaking" forever,
+  // with the mic disabled (VoiceControls disables it while the speaker
+  // channel is active) and no way for the candidate to proceed — even
+  // though the question itself is already fully persisted and on screen.
+  //
+  // Recovery calls providers.tts.stop() (which tears down the stalled
+  // attempt and fires its own onStopped — harmless here since this effect
+  // guards on attemptId+status exactly like the PROCESSING one, so that
+  // dispatch becomes a same-attempt IDLE transition immediately overwritten
+  // by the TTS_ERROR dispatched right after) and then explicitly surfaces a
+  // recoverable error, landing on VOICE_STATUS.ERROR. That status already
+  // permits both canStartListening and canStartSpeaking (see voiceState.js)
+  // — the candidate can manually start the mic, replay the question, or
+  // simply type into the always-available answer field, all without this
+  // ever submitting an answer or skipping the question. This effect is
+  // keyed on `ttsAttemptId`, so a question change or a fresh speak() attempt
+  // (both of which bump it) clears the previous timer before this one can
+  // ever fire for the wrong attempt.
+  useEffect(() => {
+    if (state.status !== VOICE_STATUS.INTERVIEWER_SPEAKING) return
+    const attemptId = state.ttsAttemptId
+    const timeoutId = setTimeout(() => {
+      // Belt-and-suspenders on top of the effect's own dependency-driven
+      // cleanup below: only recover if this is still the current attempt
+      // and it's still stuck — never tear down a newer, legitimate attempt.
+      if (stateRef.current.ttsAttemptId !== attemptId) return
+      if (stateRef.current.status !== VOICE_STATUS.INTERVIEWER_SPEAKING) return
+      providers.tts.stop()
+      dispatch({
+        type: VOICE_ACTION.TTS_ERROR,
+        attemptId,
+        error: createVoiceError(
+          'playback-timeout',
+          "The interviewer's voice is taking longer than expected. You can read the question above and answer now.",
+        ),
+      })
+    }, TTS_PLAYBACK_TIMEOUT_MS)
+    return () => clearTimeout(timeoutId)
+  }, [state.status, state.ttsAttemptId, providers])
 
   // Delivers each finalized transcript chunk to the caller exactly once,
   // keyed by finalTranscriptSeq — a monotonic counter bumped on every

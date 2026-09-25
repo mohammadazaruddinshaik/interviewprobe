@@ -21,7 +21,7 @@
 // used by Interview.remoteStt.integration.test.jsx.
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { PROCESSING_TIMEOUT_MS, useVoiceInterviewSession } from './useVoiceInterviewSession.js'
+import { PROCESSING_TIMEOUT_MS, TTS_PLAYBACK_TIMEOUT_MS, useVoiceInterviewSession } from './useVoiceInterviewSession.js'
 import { VOICE_STATUS } from './voiceState.js'
 
 const { fakeTts, fakeStt } = vi.hoisted(() => {
@@ -282,6 +282,156 @@ describe('useVoiceInterviewSession PROCESSING-timeout recovery', () => {
     })
     expect(fakeStt.stop.mock.calls.length).toBe(sttStopCallsSoFar)
     expect(hook.result.current.state.status).toBe(VOICE_STATUS.IDLE)
+  })
+})
+
+// TTS-playback-watchdog recovery: the INTERVIEWER_SPEAKING counterpart to
+// the PROCESSING-timeout suite above. Covers the deadlock a slow/cold
+// backend can expose — audio that neither starts, ends, nor errors out —
+// where remoteTtsProvider.js's own resolution paths (TTS_NATURAL_END,
+// TTS_ERROR from onerror/play().catch()) never fire on their own.
+describe('useVoiceInterviewSession TTS-playback-watchdog recovery', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('A. normal TTS playback: onStart then onNaturalEnd transitions to listening, watchdog never fires', () => {
+    const hook = renderHook((p) => useVoiceInterviewSession(p), {
+      initialProps: { questionId: 'q1', questionText: QUESTION_TEXT, active: true },
+    })
+    expect(hook.result.current.state.status).toBe(VOICE_STATUS.INTERVIEWER_SPEAKING)
+
+    act(() => {
+      fakeTts._callbacks().onStart()
+    })
+    act(() => {
+      fakeTts._callbacks().onNaturalEnd()
+    })
+
+    // Automatic speech's natural end auto-starts listening.
+    expect(hook.result.current.state.status).toBe(VOICE_STATUS.CANDIDATE_LISTENING)
+    const ttsStopCallsSoFar = fakeTts.stop.mock.calls.length
+
+    // The watchdog's own cleanup must have cancelled its timer the moment
+    // status left INTERVIEWER_SPEAKING — advancing well past it must be a
+    // complete no-op.
+    act(() => {
+      vi.advanceTimersByTime(TTS_PLAYBACK_TIMEOUT_MS * 2)
+    })
+    expect(fakeTts.stop.mock.calls.length).toBe(ttsStopCallsSoFar)
+    expect(hook.result.current.state.status).toBe(VOICE_STATUS.CANDIDATE_LISTENING)
+  })
+
+  it('B. play() rejection (surfaced as TTS_ERROR by the provider) does not leave the app stuck in interviewer-speaking', () => {
+    const hook = renderHook((p) => useVoiceInterviewSession(p), {
+      initialProps: { questionId: 'q1', questionText: QUESTION_TEXT, active: true },
+    })
+    expect(hook.result.current.state.status).toBe(VOICE_STATUS.INTERVIEWER_SPEAKING)
+
+    // Mirrors what remoteTtsProvider.js's own play().catch() does on a
+    // genuine rejection — this is the provider's existing, already-handled
+    // error path, exercised here at the hook level.
+    act(() => {
+      fakeTts._callbacks().onError({ code: 'playback-failed', message: 'Voice playback failed.', recoverable: true })
+    })
+
+    expect(hook.result.current.state.status).toBe(VOICE_STATUS.ERROR)
+    expect(hook.result.current.isSpeakerError).toBe(true)
+
+    // The watchdog must not have been needed at all — the provider's own
+    // error path resolved this well before TTS_PLAYBACK_TIMEOUT_MS.
+    act(() => {
+      vi.advanceTimersByTime(TTS_PLAYBACK_TIMEOUT_MS)
+    })
+    expect(fakeTts.stop).not.toHaveBeenCalled()
+  })
+
+  it('C. the watchdog recovers on its own when playback neither starts, ends, nor errors', () => {
+    const hook = renderHook((p) => useVoiceInterviewSession(p), {
+      initialProps: { questionId: 'q1', questionText: QUESTION_TEXT, active: true },
+    })
+    expect(hook.result.current.state.status).toBe(VOICE_STATUS.INTERVIEWER_SPEAKING)
+
+    // No callback ever fires — the deadlock this watchdog exists for.
+    act(() => {
+      vi.advanceTimersByTime(TTS_PLAYBACK_TIMEOUT_MS)
+    })
+
+    expect(fakeTts.stop).toHaveBeenCalledTimes(1)
+    expect(hook.result.current.state.status).toBe(VOICE_STATUS.ERROR)
+    expect(hook.result.current.state.error).toEqual(
+      expect.objectContaining({ code: 'playback-timeout', source: 'tts', recoverable: true }),
+    )
+    expect(hook.result.current.isSpeakerError).toBe(true)
+
+    // Recovery lands on an already-supported state that still permits both
+    // starting the mic and replaying the question (see voiceState.js's
+    // START_LISTENING_ALLOWED/START_SPEAKING_ALLOWED) — the candidate is
+    // never blocked from proceeding, and the already-persisted question
+    // text (owned by the caller, not this hook) never changes or is
+    // skipped.
+    act(() => {
+      hook.result.current.commands.startListening()
+    })
+    expect(hook.result.current.state.status).toBe(VOICE_STATUS.CANDIDATE_LISTENING)
+  })
+
+  it("D. the watchdog's own cleanup never fires for a stale/superseded attempt (question change mid-speech)", () => {
+    const hook = renderHook((p) => useVoiceInterviewSession(p), {
+      initialProps: { questionId: 'q1', questionText: QUESTION_TEXT, active: true },
+    })
+    expect(hook.result.current.state.status).toBe(VOICE_STATUS.INTERVIEWER_SPEAKING)
+    const ttsStopCallsAtSpeaking = fakeTts.stop.mock.calls.length
+
+    act(() => {
+      hook.rerender({ questionId: 'q2', questionText: 'A different question entirely.', active: true })
+    })
+    // QUESTION_CHANGED bumps ttsAttemptId and the new question's own
+    // auto-speak effect fires immediately — a real, explicit new attempt,
+    // not the watchdog's doing. resetForQuestion() itself calls
+    // providers.tts.stop() once (to tear down the superseded attempt),
+    // which is why the baseline for "no spurious extra call" is taken
+    // AFTER this rerender settles, not before.
+    expect(hook.result.current.state.status).toBe(VOICE_STATUS.INTERVIEWER_SPEAKING)
+    expect(fakeTts.speak).toHaveBeenCalledWith('A different question entirely.', expect.anything())
+    expect(fakeTts.stop.mock.calls.length).toBeGreaterThan(ttsStopCallsAtSpeaking)
+    const ttsStopCallsAfterQuestionChange = fakeTts.stop.mock.calls.length
+
+    // Advance well past the ORIGINAL attempt's watchdog deadline — its
+    // timer must have been cancelled by the question-change effect's own
+    // cleanup, so only the NEW attempt's own watchdog can fire here.
+    act(() => {
+      vi.advanceTimersByTime(TTS_PLAYBACK_TIMEOUT_MS)
+    })
+    // Exactly one more stop() call: the new question's own watchdog firing
+    // for the NEW (still-unanswered-by-any-callback) attempt — never a
+    // second, stale one from the original, already-superseded attempt.
+    expect(fakeTts.stop.mock.calls.length).toBe(ttsStopCallsAfterQuestionChange + 1)
+  })
+
+  it('E. the watchdog never submits an answer or delivers a transcript — it only recovers the speaker channel', () => {
+    const onTranscript = vi.fn()
+    const hook = renderHook((p) => useVoiceInterviewSession(p), {
+      initialProps: { questionId: 'q1', questionText: QUESTION_TEXT, active: true, onTranscript },
+    })
+    expect(hook.result.current.state.status).toBe(VOICE_STATUS.INTERVIEWER_SPEAKING)
+
+    act(() => {
+      vi.advanceTimersByTime(TTS_PLAYBACK_TIMEOUT_MS)
+    })
+
+    expect(hook.result.current.state.status).toBe(VOICE_STATUS.ERROR)
+    // No transcript concept even applies here — nothing was ever listened
+    // to, let alone finalized or delivered to the caller (which is what
+    // Interview.jsx would submit).
+    expect(onTranscript).not.toHaveBeenCalled()
+    expect(hook.result.current.state.finalTranscript).toBe('')
+    expect(hook.result.current.state.finalTranscriptSeq).toBe(0)
   })
 })
 
