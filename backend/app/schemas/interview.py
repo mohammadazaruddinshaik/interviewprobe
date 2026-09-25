@@ -47,6 +47,11 @@ class QuestionResponse(BaseModel):
     topic: InterviewTopic
     difficulty: Difficulty
     type: QuestionType
+    # A short, ephemeral conversational remark to speak before the question
+    # (see GeneratedQuestion.lead_in) — never persisted, so it is only ever
+    # present on the turn that generated it, never on a resumed/refreshed
+    # session's current_question.
+    lead_in: str | None = None
 
 
 class StartInterviewResponse(BaseModel):

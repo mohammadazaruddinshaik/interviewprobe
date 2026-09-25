@@ -162,7 +162,7 @@ def test_create_interview_sets_initial_state(service: InterviewService):
 async def test_start_interview_transitions_state_and_creates_question(service: InterviewService):
     session = create_session(service)
 
-    updated_session, question = await service.start_interview(session.id)
+    updated_session, question, _ = await service.start_interview(session.id)
 
     assert updated_session.status is InterviewStatus.IN_PROGRESS
     assert updated_session.current_question_number == 1
@@ -186,7 +186,7 @@ async def test_start_interview_creates_interviewer_message(
 ):
     session = create_session(service)
 
-    _, question = await service.start_interview(session.id)
+    _, question, _ = await service.start_interview(session.id)
 
     messages = repository.get_messages(session.id)
     assert len(messages) == 1
@@ -221,7 +221,7 @@ async def test_submit_answer_creates_candidate_message(
     service: InterviewService, repository: InterviewRepository
 ):
     session = create_session(service)
-    _, question = await service.start_interview(session.id)
+    _, question, _ = await service.start_interview(session.id)
 
     await service.submit_answer(session.id, question.id, "My answer.")
 
@@ -235,9 +235,9 @@ async def test_submit_answer_creates_candidate_message(
 @pytest.mark.asyncio
 async def test_submit_answer_advances_current_question(service: InterviewService):
     session = create_session(service, question_limit=3)
-    _, question = await service.start_interview(session.id)
+    _, question, _ = await service.start_interview(session.id)
 
-    updated_session, _ = await service.submit_answer(session.id, question.id, "answer")
+    updated_session, _, _ = await service.submit_answer(session.id, question.id, "answer")
 
     assert updated_session.current_question_number == 2
     assert updated_session.version == 3
@@ -246,9 +246,9 @@ async def test_submit_answer_advances_current_question(service: InterviewService
 @pytest.mark.asyncio
 async def test_submit_answer_creates_follow_up_question_when_limit_not_reached(service: InterviewService):
     session = create_session(service, question_limit=3)
-    _, first_question = await service.start_interview(session.id)
+    _, first_question, _ = await service.start_interview(session.id)
 
-    updated_session, next_question = await service.submit_answer(session.id, first_question.id, "answer")
+    updated_session, next_question, _ = await service.submit_answer(session.id, first_question.id, "answer")
 
     assert updated_session.status is InterviewStatus.IN_PROGRESS
     assert next_question is not None
@@ -259,18 +259,100 @@ async def test_submit_answer_creates_follow_up_question_when_limit_not_reached(s
 
 
 @pytest.mark.asyncio
+async def test_submit_answer_creates_deep_dive_question_and_stays_on_topic(
+    repository: InterviewRepository,
+):
+    fake_llm = FakeLLMProvider(
+        structured_responses={
+            "GeneratedQuestion": GeneratedQuestion(
+                question="How would you verify that cache is actually helping?",
+                topic=InterviewTopic.RAG,
+                difficulty=Difficulty.MEDIUM,
+                question_type=QuestionType.DEEP_DIVE,
+            ),
+            "AnswerAnalysis": AnswerAnalysis(
+                understanding="GOOD",
+                correctness=0.8,
+                depth=0.6,
+                concepts_demonstrated=["caching"],
+                concepts_missing=[],
+                reasoning_quality="STRONG",
+                needs_follow_up=True,
+            ),
+            "NextAction": NextAction(
+                action="DEEP_DIVE",
+                topic=InterviewTopic.RAG,
+                difficulty=Difficulty.MEDIUM,
+                rationale="Push deeper on caching.",
+            ),
+        }
+    )
+    workflow = InterviewWorkflow(repository=repository, llm_provider=fake_llm)
+    service = InterviewService(repository, workflow)
+    session = create_session(service, question_limit=3)
+    _, first_question, _ = await service.start_interview(session.id)
+
+    _, next_question, _ = await service.submit_answer(session.id, first_question.id, "I'd use Redis.")
+
+    assert next_question is not None
+    assert next_question.question_type is QuestionType.DEEP_DIVE
+    assert next_question.topic == first_question.topic
+
+
+@pytest.mark.asyncio
+async def test_submit_answer_creates_challenge_question_and_stays_on_topic(
+    repository: InterviewRepository,
+):
+    fake_llm = FakeLLMProvider(
+        structured_responses={
+            "GeneratedQuestion": GeneratedQuestion(
+                question="Suppose Redis becomes unavailable — what happens?",
+                topic=InterviewTopic.RAG,
+                difficulty=Difficulty.MEDIUM,
+                question_type=QuestionType.CHALLENGE,
+            ),
+            "AnswerAnalysis": AnswerAnalysis(
+                understanding="GOOD",
+                correctness=0.8,
+                depth=0.6,
+                concepts_demonstrated=["caching"],
+                concepts_missing=[],
+                reasoning_quality="STRONG",
+                needs_follow_up=True,
+            ),
+            "NextAction": NextAction(
+                action="CHALLENGE",
+                topic=InterviewTopic.RAG,
+                difficulty=Difficulty.MEDIUM,
+                rationale="Test resilience reasoning.",
+            ),
+        }
+    )
+    workflow = InterviewWorkflow(repository=repository, llm_provider=fake_llm)
+    service = InterviewService(repository, workflow)
+    session = create_session(service, question_limit=3)
+    _, first_question, _ = await service.start_interview(session.id)
+
+    _, next_question, _ = await service.submit_answer(session.id, first_question.id, "I'd use Redis.")
+
+    assert next_question is not None
+    assert next_question.question_type is QuestionType.CHALLENGE
+    assert next_question.topic == first_question.topic
+
+
+@pytest.mark.asyncio
 async def test_submit_answer_reaches_question_limit_and_completes(
     service: InterviewService, repository: InterviewRepository
 ):
     session = create_session(service, question_limit=3)
-    _, question = await service.start_interview(session.id)
+    _, question, _ = await service.start_interview(session.id)
 
     for _ in range(2):
-        session_state, question = await service.submit_answer(session.id, question.id, "answer")
+        session_state, question, _ = await service.submit_answer(session.id, question.id, "answer")
         assert session_state.status is InterviewStatus.IN_PROGRESS
         assert question is not None
 
-    final_session, final_question = await service.submit_answer(session.id, question.id, "final answer")
+    final_session, final_question, _ = await service.submit_answer(session.id, question.id, "final answer")
 
     assert final_session.status is InterviewStatus.COMPLETED
     assert final_session.completed_at is not None
@@ -283,7 +365,7 @@ async def test_submit_answer_reaches_question_limit_and_completes(
 @pytest.mark.asyncio
 async def test_submit_answer_fails_for_question_from_other_session(service: InterviewService):
     session_a = create_session(service)
-    _, question_a = await service.start_interview(session_a.id)
+    _, question_a, _ = await service.start_interview(session_a.id)
 
     session_b = create_session(service)
     await service.start_interview(session_b.id)
@@ -295,7 +377,7 @@ async def test_submit_answer_fails_for_question_from_other_session(service: Inte
 @pytest.mark.asyncio
 async def test_submit_answer_fails_for_stale_question(service: InterviewService):
     session = create_session(service, question_limit=3)
-    _, first_question = await service.start_interview(session.id)
+    _, first_question, _ = await service.start_interview(session.id)
     await service.submit_answer(session.id, first_question.id, "answer")
 
     with pytest.raises(InvalidQuestionError):
@@ -305,12 +387,12 @@ async def test_submit_answer_fails_for_stale_question(service: InterviewService)
 @pytest.mark.asyncio
 async def test_submit_answer_fails_when_interview_completed(service: InterviewService):
     session = create_session(service, question_limit=3)
-    _, question = await service.start_interview(session.id)
+    _, question, _ = await service.start_interview(session.id)
 
     for _ in range(2):
-        _, question = await service.submit_answer(session.id, question.id, "answer")
+        _, question, _ = await service.submit_answer(session.id, question.id, "answer")
 
-    final_session, _ = await service.submit_answer(session.id, question.id, "final answer")
+    final_session, _, _ = await service.submit_answer(session.id, question.id, "final answer")
     assert final_session.status is InterviewStatus.COMPLETED
 
     with pytest.raises(InvalidInterviewStateError):
@@ -342,7 +424,7 @@ async def test_complete_interview_transitions_and_sets_completed_at(service: Int
 @pytest.mark.asyncio
 async def test_complete_interview_increments_version(service: InterviewService):
     session = create_session(service)
-    started_session, _ = await service.start_interview(session.id)
+    started_session, _, _ = await service.start_interview(session.id)
     version_before = started_session.version
 
     completed = service.complete_interview(session.id)
@@ -398,7 +480,7 @@ async def test_failed_submit_answer_rolls_back_partial_writes(
     service: InterviewService, repository: InterviewRepository, db_session: Session
 ):
     session = create_session(service, question_limit=3)
-    _, question = await service.start_interview(session.id)
+    _, question, _ = await service.start_interview(session.id)
 
     messages_before = len(repository.get_messages(session.id))
     questions_before = len(repository.get_questions(session.id))
@@ -510,7 +592,7 @@ async def test_start_interview_uses_first_persisted_topic_not_a_hardcoded_consta
         topics=[InterviewTopic.REACT, InterviewTopic.JAVASCRIPT, InterviewTopic.CSS],
     )
 
-    _, question = await service.start_interview(session.id)
+    _, question, _ = await service.start_interview(session.id)
 
     assert question.topic is InterviewTopic.REACT
 
@@ -551,7 +633,7 @@ async def test_start_interview_derives_topic_from_persisted_selection_not_role_c
         topics=[InterviewTopic.AI_AGENTS, InterviewTopic.LLM_FUNDAMENTALS],
     )
 
-    _, question = await service.start_interview(session.id)
+    _, question, _ = await service.start_interview(session.id)
 
     assert question.topic is InterviewTopic.AI_AGENTS
 
@@ -641,10 +723,10 @@ async def test_get_interview_state_current_question_is_none_once_completed(
         question_limit=3,
         topics=[InterviewTopic.RAG],
     )
-    _, question = await service.start_interview(session.id)
+    _, question, _ = await service.start_interview(session.id)
 
     for i in range(3):
-        _, next_question = await service.submit_answer(
+        _, next_question, _ = await service.submit_answer(
             session.id, question.id, f"Answer {i + 1}.", idempotency_key=f"svc-complete-{i}"
         )
         if next_question is not None:

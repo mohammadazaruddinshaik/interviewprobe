@@ -11,7 +11,7 @@ from app.workflows.interview.routing import (
 )
 
 
-@pytest.mark.parametrize("action", ["FOLLOW_UP", "CLARIFY", "NEW_TOPIC"])
+@pytest.mark.parametrize("action", ["FOLLOW_UP", "CLARIFY", "DEEP_DIVE", "CHALLENGE", "NEW_TOPIC"])
 def test_route_after_decision_returns_the_action_for_generation_branches(action):
     state = {
         "next_action": NextAction(action=action, topic=None, difficulty=Difficulty.MEDIUM, rationale="x")
@@ -38,8 +38,15 @@ def test_route_after_decision_defaults_to_end_when_next_action_missing():
     assert ANSWER_ROUTING_MAP[route_after_decision({})] is END
 
 
-def test_routing_map_covers_exactly_the_four_actions():
-    assert set(ANSWER_ROUTING_MAP.keys()) == {"FOLLOW_UP", "CLARIFY", "NEW_TOPIC", "END"}
+def test_routing_map_covers_exactly_the_six_actions():
+    assert set(ANSWER_ROUTING_MAP.keys()) == {
+        "FOLLOW_UP",
+        "CLARIFY",
+        "DEEP_DIVE",
+        "CHALLENGE",
+        "NEW_TOPIC",
+        "END",
+    }
 
 
 def test_topic_preserved_through_next_action_for_follow_up():

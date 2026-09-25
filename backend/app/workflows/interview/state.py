@@ -33,6 +33,11 @@ class InterviewAgentState(TypedDict, total=False):
     current_question_id: UUID | None
     current_question: str | None
     topics: list[TopicState]
+    # How many persisted questions (including the current one) already
+    # belong to `current_topic` — a concrete "has this topic been explored
+    # enough?" signal for `decide_next_action`'s NEW_TOPIC/DEEP_DIVE
+    # reasoning, computed once here rather than re-derived per node.
+    questions_on_current_topic: int
 
     # Supplied by the caller when invoking the answer graph.
     candidate_answer: str | None

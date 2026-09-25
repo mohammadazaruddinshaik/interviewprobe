@@ -5,11 +5,12 @@ from app.workflows.interview.state import InterviewAgentState
 GENERATE_QUESTION_NODE = "generate_question"
 RETRIEVE_KNOWLEDGE_NODE = "retrieve_knowledge"
 
-# FOLLOW_UP/CLARIFY/NEW_TOPIC all currently lead to the same generic
-# `retrieve_knowledge` -> `generate_question` pair (Task 14 skeleton, Task
-# 20 retrieval). Kept as three distinct entries rather than collapsed into
-# one, so a future task can point any single action at a different node
-# without touching `route_after_decision` or the graph wiring in graph.py.
+# FOLLOW_UP/CLARIFY/DEEP_DIVE/CHALLENGE/NEW_TOPIC all currently lead to the
+# same generic `retrieve_knowledge` -> `generate_question` pair (Task 14
+# skeleton, Task 20 retrieval). Kept as distinct entries rather than
+# collapsed into one, so a future task can point any single action at a
+# different node without touching `route_after_decision` or the graph
+# wiring in graph.py.
 #
 # END is deliberately the only action that never reaches
 # `retrieve_knowledge` — a completed interview has no next question to
@@ -17,6 +18,8 @@ RETRIEVE_KNOWLEDGE_NODE = "retrieve_knowledge"
 ANSWER_ROUTING_MAP: dict[str, str] = {
     "FOLLOW_UP": RETRIEVE_KNOWLEDGE_NODE,
     "CLARIFY": RETRIEVE_KNOWLEDGE_NODE,
+    "DEEP_DIVE": RETRIEVE_KNOWLEDGE_NODE,
+    "CHALLENGE": RETRIEVE_KNOWLEDGE_NODE,
     "NEW_TOPIC": RETRIEVE_KNOWLEDGE_NODE,
     "END": END,
 }

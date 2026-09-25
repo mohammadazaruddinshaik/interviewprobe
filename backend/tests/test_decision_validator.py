@@ -93,6 +93,45 @@ def test_follow_up_and_clarify_preserve_the_llm_proposed_difficulty():
     assert result.action.difficulty == Difficulty.HARD
 
 
+def test_deep_dive_is_normalized_to_current_topic_even_if_llm_proposed_another():
+    ctx = context(current_topic=InterviewTopic.RAG)
+
+    result = validate_decision(proposal("DEEP_DIVE", InterviewTopic.AI_AGENTS), ctx)
+
+    assert result.action.action == "DEEP_DIVE"
+    assert result.action.topic is InterviewTopic.RAG
+    assert result.fallback_used is False
+
+
+def test_challenge_is_normalized_to_current_topic():
+    ctx = context(current_topic=InterviewTopic.RAG)
+
+    result = validate_decision(proposal("CHALLENGE", None), ctx)
+
+    assert result.action.action == "CHALLENGE"
+    assert result.action.topic is InterviewTopic.RAG
+    assert result.fallback_used is False
+
+
+def test_deep_dive_and_challenge_preserve_the_llm_proposed_difficulty():
+    ctx = context()
+
+    result = validate_decision(proposal("DEEP_DIVE", InterviewTopic.RAG, difficulty=Difficulty.HARD), ctx)
+    assert result.action.difficulty == Difficulty.HARD
+
+    result = validate_decision(proposal("CHALLENGE", InterviewTopic.RAG, difficulty=Difficulty.EASY), ctx)
+    assert result.action.difficulty == Difficulty.EASY
+
+
+def test_question_limit_forces_end_overriding_deep_dive_and_challenge():
+    ctx = context(question_number=5, question_limit=5)
+
+    for action in ("DEEP_DIVE", "CHALLENGE"):
+        result = validate_decision(proposal(action, InterviewTopic.RAG), ctx)
+        assert result.action.action == "END"
+        assert result.fallback_used is True
+
+
 # ---------------------------------------------------------------------------
 # NEW_TOPIC — valid
 # ---------------------------------------------------------------------------

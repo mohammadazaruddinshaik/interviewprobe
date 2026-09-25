@@ -6,6 +6,9 @@ class Role(StrEnum):
     FRONTEND_DEVELOPER = "FRONTEND_DEVELOPER"
     BACKEND_DEVELOPER = "BACKEND_DEVELOPER"
     JAVA_DEVELOPER = "JAVA_DEVELOPER"
+    SDE = "SDE"
+    SDE_INTERN = "SDE_INTERN"
+    FULL_STACK_DEVELOPER = "FULL_STACK_DEVELOPER"
 
 
 class Difficulty(StrEnum):
@@ -54,11 +57,16 @@ class InterviewTopic(StrEnum):
     JVM = "JVM"
     SPRING = "SPRING"
 
+    # SDE / SDE Intern (also reused by Full Stack Developer's catalog entry)
+    DATA_STRUCTURES_ALGORITHMS = "DATA_STRUCTURES_ALGORITHMS"
+
 
 class QuestionType(StrEnum):
     INITIAL = "INITIAL"
     FOLLOW_UP = "FOLLOW_UP"
     CLARIFICATION = "CLARIFICATION"
+    DEEP_DIVE = "DEEP_DIVE"
+    CHALLENGE = "CHALLENGE"
     TOPIC_TRANSITION = "TOPIC_TRANSITION"
 
 

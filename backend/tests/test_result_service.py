@@ -114,9 +114,9 @@ async def create_completed_interview(
         role=Role.BACKEND_DEVELOPER, difficulty=Difficulty.MEDIUM, question_limit=question_limit,
         topics=topics or [InterviewTopic.DATABASES],
     )
-    _, question = await interview_service.start_interview(session.id)
+    _, question, _ = await interview_service.start_interview(session.id)
     for i in range(question_limit):
-        _, next_question = await interview_service.submit_answer(session.id, question.id, f"answer {i}")
+        _, next_question, _ = await interview_service.submit_answer(session.id, question.id, f"answer {i}")
         if next_question is not None:
             question = next_question
     return session.id

@@ -58,7 +58,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _to_question_response(question) -> QuestionResponse:
+def _to_question_response(question, lead_in: str | None = None) -> QuestionResponse:
     return QuestionResponse(
         id=question.id,
         sequence=question.sequence_number,
@@ -66,6 +66,7 @@ def _to_question_response(question) -> QuestionResponse:
         topic=question.topic,
         difficulty=question.difficulty,
         type=question.question_type,
+        lead_in=lead_in,
     )
 
 
@@ -145,14 +146,14 @@ async def start_interview(
         raise InterviewLockBusyError("This interview is currently being updated. Please retry.")
 
     try:
-        session, question = await service.start_interview(session_id)
+        session, question, lead_in = await service.start_interview(session_id)
 
         await _mirror_runtime_state(runtime_state_service, session=session, last_action=None)
 
         response = StartInterviewResponse(
             session_id=session.id,
             status=session.status,
-            question=_to_question_response(question),
+            question=_to_question_response(question, lead_in),
         )
         return DataResponse(data=response)
     finally:
@@ -229,7 +230,7 @@ async def submit_answer(
         if existing is not None:
             return _replay_or_conflict(existing, fingerprint)
 
-        session, next_question = await service.submit_answer(
+        session, next_question, lead_in = await service.submit_answer(
             session_id, payload.question_id, payload.answer, idempotency_key=idempotency_key
         )
 
@@ -241,7 +242,7 @@ async def submit_answer(
                 session_id=session.id,
                 status=session.status,
                 action=next_question.question_type.value,
-                question=_to_question_response(next_question),
+                question=_to_question_response(next_question, lead_in),
             )
         else:
             await _mirror_runtime_state(runtime_state_service, session=session, last_action="END")

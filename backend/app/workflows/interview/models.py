@@ -13,6 +13,16 @@ class GeneratedQuestion(BaseModel):
     topic: InterviewTopic
     difficulty: Difficulty
     question_type: QuestionType
+    # A short, natural conversational remark spoken immediately before the
+    # question — an acknowledgment, a reaction to the candidate's previous
+    # answer, a transition, or (for the very first question) a brief
+    # opening. Optional and deliberately unvalidated beyond length: this is
+    # conversational flavor, not a structural decision the backend needs to
+    # authorize the way it authorizes `topic`/action/sequencing — it is
+    # never persisted to `interview_questions.question_text` and never
+    # replayed on a resumed/refreshed session, exactly like a human
+    # interviewer's spoken transition would not be.
+    lead_in: str | None = Field(default=None, max_length=300)
 
 
 class AnswerAnalysis(BaseModel):
@@ -36,10 +46,23 @@ class NextAction(BaseModel):
     executes it (enforces question limits, topic ordering, etc.).
     """
 
-    action: Literal["FOLLOW_UP", "NEW_TOPIC", "CLARIFY", "END"]
+    action: Literal["FOLLOW_UP", "CLARIFY", "DEEP_DIVE", "CHALLENGE", "NEW_TOPIC", "END"]
     topic: InterviewTopic | None = None
     difficulty: Difficulty
-    rationale: str = Field(min_length=1)
+    # Internal decision metadata only — persisted as `agent_reason` for
+    # debugging/audit, never surfaced to the candidate (see
+    # `_ACTION_TO_QUESTION_TYPE`/`QuestionResponse` — there is no API field
+    # that exposes it). One short phrase naming why this action was chosen,
+    # never a multi-step chain of thought.
+    rationale: str = Field(
+        min_length=1,
+        description=(
+            "One short internal phrase naming which decision criterion applied and why "
+            "(e.g. 'demonstrated cache-aside pattern, probing invalidation next'). "
+            "Concise audit metadata only — never shown to the candidate, never a "
+            "multi-step chain of thought."
+        ),
+    )
 
 
 class TopicState(BaseModel):

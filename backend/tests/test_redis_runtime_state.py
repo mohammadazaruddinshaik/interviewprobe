@@ -208,7 +208,7 @@ async def test_get_or_rebuild_state_reconstructs_from_postgres_on_miss(
         question_limit=3,
         topics=[InterviewTopic.RAG],
     )
-    session, question = await interview_service.start_interview(session.id)
+    session, question, _ = await interview_service.start_interview(session.id)
 
     # Nothing was ever written to Redis for this session.
     assert await runtime_state_service.exists(session.id) is False
@@ -264,7 +264,7 @@ async def test_redis_failure_does_not_affect_postgres_interview_state(
         question_limit=3,
         topics=[InterviewTopic.RAG],
     )
-    session, question = await interview_service.start_interview(session.id)
+    session, question, _ = await interview_service.start_interview(session.id)
 
     failing_runtime_state_service = RuntimeStateService(
         redis_client=FailingAsyncRedis(), repository=repository

@@ -37,6 +37,8 @@ if TYPE_CHECKING:
 _ACTION_TO_QUESTION_TYPE: dict[str, QuestionType] = {
     "FOLLOW_UP": QuestionType.FOLLOW_UP,
     "CLARIFY": QuestionType.CLARIFICATION,
+    "DEEP_DIVE": QuestionType.DEEP_DIVE,
+    "CHALLENGE": QuestionType.CHALLENGE,
     "NEW_TOPIC": QuestionType.TOPIC_TRANSITION,
 }
 
@@ -135,7 +137,9 @@ class InterviewService:
     # Start
     # ------------------------------------------------------------------
 
-    async def start_interview(self, session_id: uuid.UUID) -> tuple[InterviewSession, InterviewQuestion]:
+    async def start_interview(
+        self, session_id: uuid.UUID
+    ) -> tuple[InterviewSession, InterviewQuestion, str | None]:
         try:
             session = self._get_session_or_raise(session_id)
             if session.status != InterviewStatus.CREATED:
@@ -189,7 +193,7 @@ class InterviewService:
         except Exception:
             self._db.rollback()
             raise
-        return session, question
+        return session, question, generated_question.lead_in
 
     # ------------------------------------------------------------------
     # Submit answer
@@ -201,7 +205,7 @@ class InterviewService:
         question_id: uuid.UUID,
         answer: str,
         idempotency_key: str | None = None,
-    ) -> tuple[InterviewSession, InterviewQuestion | None]:
+    ) -> tuple[InterviewSession, InterviewQuestion | None, str | None]:
         # idempotency_key is accepted so the API boundary can pass it through
         # to the service layer. Enforcement itself (dedup, replay) lives in
         # the Redis-backed layer the API route wraps this call in — by the
@@ -245,6 +249,7 @@ class InterviewService:
             # decision_validator.py), but backend state remains the final
             # authority rather than trusting the graph's output alone.
             next_question: InterviewQuestion | None = None
+            lead_in: str | None = None
             if next_action.action != "END" and next_question_number <= session.question_limit:
                 topic_transition = result["topic_transition"]
                 self.topic_progression_service.apply_transition_without_commit(
@@ -258,6 +263,7 @@ class InterviewService:
                 )
 
                 generated_question = result["generated_question"]
+                lead_in = generated_question.lead_in
                 question_type = _ACTION_TO_QUESTION_TYPE.get(next_action.action, QuestionType.FOLLOW_UP)
                 next_question = self._create_question(
                     session=session,
@@ -281,7 +287,7 @@ class InterviewService:
         except Exception:
             self._db.rollback()
             raise
-        return session, next_question
+        return session, next_question, lead_in
 
     # ------------------------------------------------------------------
     # Complete

@@ -23,12 +23,16 @@ def test_enums_are_str_enums():
 
 def test_role_members():
     # Task 16 made this role-agnostic — assert the full, exact set so a
-    # future accidental addition/removal is still caught.
+    # future accidental addition/removal is still caught. SDE/SDE_INTERN/
+    # FULL_STACK_DEVELOPER were added for the Technical Round role catalog.
     assert {member.value for member in Role} == {
         "AI_ENGINEER",
         "FRONTEND_DEVELOPER",
         "BACKEND_DEVELOPER",
         "JAVA_DEVELOPER",
+        "SDE",
+        "SDE_INTERN",
+        "FULL_STACK_DEVELOPER",
     }
 
 
@@ -66,6 +70,8 @@ def test_question_type_members():
         "INITIAL",
         "FOLLOW_UP",
         "CLARIFICATION",
+        "DEEP_DIVE",
+        "CHALLENGE",
         "TOPIC_TRANSITION",
     }
 

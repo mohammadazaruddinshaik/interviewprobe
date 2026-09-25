@@ -215,11 +215,19 @@ class FakeInterviewRepository:
         topics=None,
         current_question=None,
         questions_by_id: dict[UUID, object] | None = None,
+        questions: list | None = None,
     ):
         self.session = session
         self.topics = topics or []
         self.current_question = current_question
         self.questions_by_id = questions_by_id or {}
+        # Defaults to `[current_question]` (or `[]`) rather than always
+        # `[]` — callers that never pass `questions` explicitly still get a
+        # `questions_on_current_topic` count of 1 (matching "the current
+        # question already belongs to its own topic"), not a silently wrong
+        # 0 that would make every existing FakeInterviewRepository(...) test
+        # look like a brand-new topic.
+        self.questions = questions if questions is not None else ([current_question] if current_question else [])
 
     def get_session(self, session_id: UUID):
         if self.session is not None and self.session.id == session_id:
@@ -234,6 +242,9 @@ class FakeInterviewRepository:
 
     def get_question(self, question_id: UUID):
         return self.questions_by_id.get(question_id)
+
+    def get_questions(self, session_id: UUID):
+        return self.questions
 
 
 def _deterministic_vector(text: str, dimension: int) -> list[float]:

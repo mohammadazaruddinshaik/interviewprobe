@@ -139,6 +139,39 @@ def test_load_interview_context_loads_question_text_when_only_id_supplied():
     assert result["current_question"] == "What is a vector database?"
 
 
+def test_load_interview_context_counts_only_questions_on_the_current_topic():
+    """Task: adaptive decision quality — `questions_on_current_topic` is a
+    concrete 'has this topic been explored?' signal for decide_next_action.
+    It must count only questions on the resolved topic, not the session's
+    whole question history."""
+    session = make_session()
+    current_question = make_question(session.id, sequence_number=3, topic=InterviewTopic.RAG)
+    other_rag_question = make_question(session.id, sequence_number=1, topic=InterviewTopic.RAG)
+    unrelated_question = make_question(session.id, sequence_number=2, topic=InterviewTopic.AI_AGENTS)
+    repository = FakeInterviewRepository(
+        session=session,
+        topics=[make_topic(session.id, InterviewTopic.RAG, 1)],
+        current_question=current_question,
+        questions=[other_rag_question, unrelated_question, current_question],
+    )
+
+    node = load_interview_context(repository)
+    result = node({"session_id": session.id})
+
+    assert result["current_topic"] is InterviewTopic.RAG
+    assert result["questions_on_current_topic"] == 2
+
+
+def test_load_interview_context_questions_on_current_topic_is_zero_with_no_persisted_questions():
+    session = make_session()
+    repository = FakeInterviewRepository(session=session, topics=[], questions=[])
+
+    node = load_interview_context(repository)
+    result = node({"session_id": session.id})
+
+    assert result["questions_on_current_topic"] == 0
+
+
 def test_load_interview_context_raises_for_nonexistent_session():
     from app.services.interview_service import InterviewNotFoundError
 
@@ -487,6 +520,168 @@ async def test_generate_question_prompt_includes_role_catalog_context_for_fronte
     assert "LLM_FUNDAMENTALS" not in combined
 
 
+# ---------------------------------------------------------------------------
+# Natural adaptive behavior — FOLLOW_UP/CLARIFY/DEEP_DIVE/CHALLENGE prompts
+# stay grounded in what the candidate actually said, and are distinguished
+# from each other by guidance, not just by label.
+# ---------------------------------------------------------------------------
+
+
+def _adaptive_state(action: str, **overrides) -> dict:
+    defaults = dict(
+        session_id=uuid.uuid4(),
+        role=Role.AI_ENGINEER,
+        difficulty=Difficulty.MEDIUM,
+        current_topic=InterviewTopic.RAG,
+        current_question="Explain RAG.",
+        candidate_answer="I'd use Redis to reduce database load.",
+        question_number=1,
+        next_action=NextAction(action=action, topic=InterviewTopic.RAG, difficulty=Difficulty.MEDIUM, rationale="x"),
+        answer_analysis=AnswerAnalysis(
+            understanding="GOOD",
+            correctness=0.8,
+            depth=0.6,
+            concepts_demonstrated=["caching"],
+            concepts_missing=["cache_invalidation"],
+            reasoning_quality="MODERATE",
+            needs_follow_up=True,
+        ),
+    )
+    defaults.update(overrides)
+    return defaults
+
+
+@pytest.mark.asyncio
+async def test_follow_up_prompt_is_grounded_in_the_candidates_actual_answer():
+    provider = FakeLLMProvider(
+        structured_responses={
+            "GeneratedQuestion": GeneratedQuestion(
+                question="q", topic=InterviewTopic.RAG, difficulty=Difficulty.MEDIUM,
+                question_type=QuestionType.FOLLOW_UP,
+            )
+        }
+    )
+    node = generate_question(provider)
+
+    await node(_adaptive_state("FOLLOW_UP"))
+
+    _, messages = provider.calls[0]
+    combined = " ".join(m.content for m in messages)
+    assert "Redis to reduce database load" in combined
+    assert "cache_invalidation" in combined
+    assert "grows directly out of what" in combined
+
+
+@pytest.mark.asyncio
+async def test_clarify_prompt_asks_about_the_specific_unclear_part_of_the_answer():
+    provider = FakeLLMProvider(
+        structured_responses={
+            "GeneratedQuestion": GeneratedQuestion(
+                question="q", topic=InterviewTopic.RAG, difficulty=Difficulty.MEDIUM,
+                question_type=QuestionType.CLARIFICATION,
+            )
+        }
+    )
+    node = generate_question(provider)
+
+    await node(_adaptive_state("CLARIFY"))
+
+    _, messages = provider.calls[0]
+    combined = " ".join(m.content for m in messages)
+    assert "Redis to reduce database load" in combined
+    assert "ambiguous" in combined.lower()
+
+
+@pytest.mark.asyncio
+async def test_deep_dive_prompt_pushes_deeper_into_the_demonstrated_concept():
+    provider = FakeLLMProvider(
+        structured_responses={
+            "GeneratedQuestion": GeneratedQuestion(
+                question="q", topic=InterviewTopic.RAG, difficulty=Difficulty.MEDIUM,
+                question_type=QuestionType.DEEP_DIVE,
+            )
+        }
+    )
+    node = generate_question(provider)
+
+    await node(_adaptive_state("DEEP_DIVE"))
+
+    _, messages = provider.calls[0]
+    combined = " ".join(m.content for m in messages)
+    assert "Redis to reduce database load" in combined
+    assert "caching" in combined
+    assert "SAME concept" in combined
+    assert "tradeoff" in combined.lower()
+
+
+@pytest.mark.asyncio
+async def test_challenge_prompt_introduces_a_constraint_on_the_proposed_approach():
+    provider = FakeLLMProvider(
+        structured_responses={
+            "GeneratedQuestion": GeneratedQuestion(
+                question="q", topic=InterviewTopic.RAG, difficulty=Difficulty.MEDIUM,
+                question_type=QuestionType.CHALLENGE,
+            )
+        }
+    )
+    node = generate_question(provider)
+
+    await node(_adaptive_state("CHALLENGE"))
+
+    _, messages = provider.calls[0]
+    combined = " ".join(m.content for m in messages)
+    assert "Redis to reduce database load" in combined
+    assert "constraint" in combined.lower()
+    assert "not disagreement or criticism" in combined.lower() or "never disagreement" in combined.lower() or (
+        "not simply disagree" in combined.lower()
+    )
+
+
+@pytest.mark.asyncio
+async def test_decide_next_action_prompt_describes_all_six_actions_distinctly():
+    provider = FakeLLMProvider(
+        structured_responses={
+            "NextAction": NextAction(
+                action="FOLLOW_UP", topic=InterviewTopic.RAG, difficulty=Difficulty.MEDIUM, rationale="x"
+            )
+        }
+    )
+    node = decide_next_action(provider)
+
+    await node(_adaptive_state("FOLLOW_UP"))
+
+    _, messages = provider.calls[0]
+    combined = " ".join(m.content for m in messages)
+    for action_name in ("FOLLOW_UP", "CLARIFY", "DEEP_DIVE", "CHALLENGE", "NEW_TOPIC", "END"):
+        assert f"-> {action_name}" in combined
+
+
+@pytest.mark.asyncio
+async def test_lead_in_guidance_forbids_internal_action_and_system_vocabulary():
+    """Regression guard for the natural-adaptive-behavior milestone: the
+    prompt instructing the LLM how to write `lead_in` must explicitly
+    forbid the internal action/system vocabulary the candidate must never
+    hear, so a prompt regression here is caught even though the LLM output
+    itself is mocked in tests."""
+    provider = FakeLLMProvider(
+        structured_responses={
+            "GeneratedQuestion": GeneratedQuestion(
+                question="q", topic=InterviewTopic.RAG, difficulty=Difficulty.MEDIUM,
+                question_type=QuestionType.FOLLOW_UP,
+            )
+        }
+    )
+    node = generate_question(provider)
+
+    await node(_adaptive_state("FOLLOW_UP"))
+
+    _, messages = provider.calls[0]
+    combined = " ".join(m.content for m in messages)
+    assert "deep dive" in combined.lower()
+    assert "LangGraph" in combined or "workflow/graph system" in combined
+    assert "AI model, provider" in combined
+
+
 @pytest.mark.asyncio
 async def test_generate_initial_question_prompt_differs_by_role_for_the_same_shaped_state():
     ai_provider = FakeLLMProvider(
@@ -583,6 +778,131 @@ def _decide_next_action_state(analysis: AnswerAnalysis, **overrides) -> dict:
     return state
 
 
+# ---------------------------------------------------------------------------
+# Adaptive decision quality — the decision prompt must surface the concrete,
+# observable signals each of the six actions actually needs (Task: Improve
+# Adaptive Interview Decision Quality). Root cause of FOLLOW_UP dominance:
+# the decision prompt only ever saw a compressed AnswerAnalysis summary
+# (understanding/correctness/depth/reasoning_quality/concepts_missing) —
+# never the candidate's actual answer, never `concepts_demonstrated`, and
+# never any signal for how long the current topic had already run. These
+# tests assert those signals are now present in the prompt sent to the
+# LLM — they do not, and cannot, assert what a real model decides.
+# ---------------------------------------------------------------------------
+
+
+async def _decision_prompt_text(**state_overrides) -> str:
+    provider = FakeLLMProvider(
+        structured_responses={
+            "NextAction": NextAction(
+                action="FOLLOW_UP", topic=InterviewTopic.RAG, difficulty=Difficulty.MEDIUM, rationale="x"
+            )
+        }
+    )
+    node = decide_next_action(provider)
+    await node(_decide_next_action_state(make_analysis(), **state_overrides))
+    _, messages = provider.calls[-1]
+    return " ".join(m.content for m in messages)
+
+
+@pytest.mark.asyncio
+async def test_decision_prompt_includes_the_candidate_answer_and_question_verbatim():
+    """Previously the decision LLM never saw the raw answer/question at
+    all — only a lossy analysis summary. FOLLOW_UP/CLARIFY/DEEP_DIVE/
+    CHALLENGE all hinge on nuance that summary loses."""
+    combined = await _decision_prompt_text(
+        current_question="How would you scale this service?",
+        candidate_answer="SENTINEL_RAW_ANSWER_TEXT_v2",
+    )
+    assert "How would you scale this service?" in combined
+    assert "SENTINEL_RAW_ANSWER_TEXT_v2" in combined
+
+
+@pytest.mark.asyncio
+async def test_decision_prompt_clarify_scenario_surfaces_the_ambiguous_answer():
+    """CLARIFY example from the task: a vague answer naming no mechanism.
+    Regression guard for the actual root cause — this exact answer text
+    used to never reach the decision prompt at all."""
+    combined = await _decision_prompt_text(
+        candidate_answer="I'd use caching because it makes the system faster.",
+        answer_analysis=AnswerAnalysis(
+            understanding="WEAK",
+            correctness=0.3,
+            depth=0.2,
+            concepts_demonstrated=[],
+            concepts_missing=["cache_invalidation"],
+            reasoning_quality="WEAK",
+            needs_follow_up=True,
+        ),
+    )
+    assert "I'd use caching because it makes the system faster." in combined
+    assert "self-contradictory" in combined or "unclear" in combined  # CLARIFY's observable trigger is documented
+
+
+@pytest.mark.asyncio
+async def test_decision_prompt_deep_dive_scenario_surfaces_demonstrated_concepts():
+    """DEEP_DIVE example from the task: a concrete, correct claim.
+    `concepts_demonstrated` used to be silently dropped from the prompt —
+    with no visibility into what the candidate got right, the model had
+    no basis to ever choose DEEP_DIVE over FOLLOW_UP."""
+    combined = await _decision_prompt_text(
+        candidate_answer="I'd use Redis because cache invalidation and TTLs let us control stale data.",
+        answer_analysis=AnswerAnalysis(
+            understanding="STRONG",
+            correctness=0.9,
+            depth=0.7,
+            concepts_demonstrated=["cache_invalidation", "ttl"],
+            concepts_missing=[],
+            reasoning_quality="STRONG",
+            needs_follow_up=True,
+        ),
+    )
+    assert "concepts_demonstrated" in combined
+    assert "cache_invalidation" in combined
+    assert "ttl" in combined
+
+
+@pytest.mark.asyncio
+async def test_decision_prompt_challenge_scenario_surfaces_the_proposed_design():
+    """CHALLENGE example from the task: a concrete design proposal a
+    realistic constraint could test. The design's specifics (what exactly
+    was proposed) only exist in the raw answer text, never in the
+    analysis summary."""
+    combined = await _decision_prompt_text(
+        candidate_answer="I'd cache all product data in Redis.",
+        answer_analysis=AnswerAnalysis(
+            understanding="GOOD",
+            correctness=0.7,
+            depth=0.4,
+            concepts_demonstrated=["caching"],
+            concepts_missing=[],
+            reasoning_quality="MODERATE",
+            needs_follow_up=True,
+        ),
+    )
+    assert "I'd cache all product data in Redis." in combined
+    assert "constraint" in combined.lower() or "edge case" in combined.lower()
+
+
+@pytest.mark.asyncio
+async def test_decision_prompt_new_topic_scenario_surfaces_topic_exploration_count():
+    """NEW_TOPIC's observable trigger from the task: the current topic has
+    been sufficiently explored. `questions_on_current_topic` is the
+    concrete signal for that — previously nothing told the decision model
+    how many turns had already been spent on this topic."""
+    combined = await _decision_prompt_text(questions_on_current_topic=5)
+    assert "Questions already asked on this topic" in combined
+    assert "5" in combined
+
+
+@pytest.mark.asyncio
+async def test_decision_prompt_instructs_holistic_reasoning_not_mechanical_matching():
+    """Phase 3 requirement: the six criteria are reasoning guides, not a
+    checklist the model should mechanically match top-to-bottom."""
+    combined = await _decision_prompt_text()
+    assert "not a mechanical checklist" in combined or "not a mechanical" in combined
+
+
 @pytest.mark.asyncio
 async def test_analyze_answer_system_prompt_flags_candidate_answer_as_untrusted():
     provider = FakeLLMProvider(structured_responses={"AnswerAnalysis": make_analysis()})
@@ -606,7 +926,7 @@ async def test_decide_next_action_system_prompt_flags_analysis_as_untrusted():
 
     _, messages = provider.calls[-1]
     system_message = next(m for m in messages if m.role == "system")
-    assert "not an instruction to follow" in system_message.content
+    assert "never instructions to follow" in system_message.content
     assert "ignore previous instructions" in system_message.content.lower()
 
 

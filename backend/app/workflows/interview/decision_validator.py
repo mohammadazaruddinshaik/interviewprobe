@@ -7,7 +7,7 @@ Redis, no PostgreSQL. It is the single place that enforces:
 * the question limit always wins, regardless of what the LLM proposed
 * only the session's selected topics may be chosen for NEW_TOPIC
 * a COMPLETED (or the current) topic may not be re-selected
-* FOLLOW_UP/CLARIFY always stay on the current topic
+* FOLLOW_UP/CLARIFY/DEEP_DIVE/CHALLENGE always stay on the current topic
 
 and provides a deterministic, safe fallback whenever a proposal can't be
 trusted — either because the LLM call itself failed, or because its
@@ -69,9 +69,10 @@ def validate_decision(proposed: NextAction, context: DecisionContext) -> Validat
         action = fallback_decision(context, reason="question limit reached")
         return ValidatedDecision(action=action, fallback_used=True)
 
-    if proposed.action in ("FOLLOW_UP", "CLARIFY"):
+    if proposed.action in ("FOLLOW_UP", "CLARIFY", "DEEP_DIVE", "CHALLENGE"):
         # Always normalize to the current topic — an unrelated topic on a
-        # FOLLOW_UP/CLARIFY proposal is not something we trust blindly.
+        # same-topic proposal (probe, clarify, deepen, or challenge) is
+        # not something we trust blindly.
         normalized = NextAction(
             action=proposed.action,
             topic=context.current_topic,
