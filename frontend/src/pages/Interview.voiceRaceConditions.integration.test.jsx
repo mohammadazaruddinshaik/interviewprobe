@@ -161,7 +161,7 @@ describe('voice race conditions (real hook + real reducer, faked providers)', ()
     // The candidate can recover manually: dismiss, then submit the
     // preserved transcript through the ordinary (already-tested) path.
     fireEvent.click(dismissButton)
-    fireEvent.click(screen.getByRole('button', { name: 'Submit answer' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Finish Answer' }))
     await waitFor(() => expect(submitInterviewAnswer).toHaveBeenCalledOnce())
     expect(submitInterviewAnswer).toHaveBeenCalledWith(
       'session-1',

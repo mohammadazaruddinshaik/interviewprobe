@@ -1,6 +1,6 @@
 # InterviewProbe
 
-InterviewProbe is a role-agnostic, adaptive technical interview practice platform. A candidate picks a role, a difficulty, and one or more topics; the backend runs an adaptive interview loop — powered by an LLM behind a provider-neutral abstraction and a [LangGraph](https://github.com/langchain-ai/langgraph) workflow — that asks a question, analyzes the answer, and decides whether to follow up, move to a new topic, ask a clarifying question, or end the interview. At the end, a separate evaluation service scores the transcript and produces a result report. An optional voice mode lets the candidate hear questions spoken aloud and answer by speaking instead of typing.
+InterviewProbe is a role-agnostic, **voice-first** adaptive technical interview practice platform. A candidate picks a role, a difficulty, and one or more topics, then conducts the entire interview by voice: the AI interviewer speaks each question aloud (Azure Speech), the candidate answers by speaking (streamed live to Deepgram for transcription), and the backend runs an adaptive interview loop — powered by an LLM behind a provider-neutral abstraction and a [LangGraph](https://github.com/langchain-ai/langgraph) workflow — that analyzes the answer and decides whether to follow up, move to a new topic, ask a clarifying question, or end the interview. At the end, a separate evaluation service scores the transcript and produces a result report. There is no separate text-interview mode and no choice between text and voice — voice is the interview. (There is no video, no WebRTC, and no realtime LLM voice streaming: speech is converted to text and back through discrete TTS/STT calls, not a live audio model.)
 
 High-level flow:
 
@@ -12,13 +12,13 @@ create interview → start (first question) → adaptive question/answer loop �
 
 - **Frontend** — React + Vite (React Router for navigation), talking to the backend over a plain JSON REST API.
 - **Backend** — FastAPI.
-- **PostgreSQL** — the durable source of truth for every interview session, question, message, topic, and evaluation. Every mutation is committed here before anything else happens.
+- **PostgreSQL** — the durable source of truth for every interview session, question, message, topic, and evaluation. Every mutation is committed here before anything else happens. Because current interview state (current question, current topic, progress) is always reconstructed from PostgreSQL rather than any in-memory or client-side state, an interrupted interview — a page refresh, a lost connection, a browser restart — recovers automatically: the candidate is shown the same unanswered question they left off on, with no separate "resume" step.
 - **Redis** — runtime coordination only, never the source of truth: distributed locks around interview mutations, a fixed-window rate limiter (both per-session and per-client), an idempotency-key store for answer submissions, and a best-effort mirror of current interview runtime state. If Redis is unavailable, the app returns a clear `503`/`REDIS_UNAVAILABLE` for the operations that require it rather than silently skipping a safety guarantee — it never lets stale Redis state override PostgreSQL.
-- **LangGraph workflow** — orchestrates the adaptive interview loop (initial question, answer analysis, next-action decision, follow-up/new-topic question generation) as a graph of nodes, with a deterministic fallback whenever the LLM's proposed next action is invalid.
-- **LLM abstraction** — a provider-neutral interface (`app/llm/`) with OpenAI and Gemini implementations; the app is configured to use one at a time via `LLM_PROVIDER`.
-- **Knowledge / RAG** — an optional retrieval layer (`app/knowledge/`) backed by Qdrant and a provider-neutral embedding abstraction (OpenAI embeddings today). Retrieval is scoped by role/topic/(optional concept) so one role's questions can't be grounded in another role's material. Retrieval is entirely optional and fails safe: if Qdrant or the embedding provider is unreachable, slow, or unconfigured, question generation continues ungrounded rather than failing the turn.
-- **Evaluation** — a separate service (`app/evaluation/`) that scores a completed interview's transcript once, persists the result, and serves it idempotently afterward (a second request never re-runs the LLM call).
-- **Voice** — an optional voice interview mode. `POST /api/v1/voice/tts` synthesizes a question via Azure Speech; `POST /api/v1/voice/stt/token` issues a short-lived Deepgram token so the browser can stream the candidate's microphone audio directly to Deepgram. Both are backend-gated behind their own configuration and both fall back to the browser's own Web Speech API when the "remote" providers aren't enabled — see [Voice architecture](#voice-architecture) below.
+- **LangGraph workflow** — the adaptive interview *engine*: orchestrates the loop (initial question, answer analysis, next-action decision, follow-up/new-topic/clarification question generation) as a graph of nodes. The LLM only ever *proposes* a decision (`FOLLOW_UP`/`CLARIFY`/`NEW_TOPIC`/`END`) or a question — the backend (`decision_validator.py`) validates and is the sole authority over question limits, topic validity, session status, sequence numbers, and every database mutation; an invalid or failed proposal falls back to a deterministic backend decision instead.
+- **LLM abstraction** — a provider-neutral interface (`app/llm/`) with OpenAI and Gemini implementations; the app is configured to use one at a time via `LLM_PROVIDER`. Every LLM call returns a Pydantic-validated structured output, never raw/unvalidated text.
+- **Knowledge / RAG** — a *grounding layer*, not the adaptive engine itself: an optional retrieval step (`app/knowledge/`) backed by Qdrant and a provider-neutral embedding abstraction (OpenAI embeddings today) that retrieves relevant technical knowledge for the LLM to reference when generating a question. LangGraph decides *what to ask about next*; RAG only supplies *reference material* for that question, scoped by role/topic/(optional concept) so one role's questions can't be grounded in another role's material. Retrieval is entirely optional and fails safe: if Qdrant or the embedding provider is unreachable, slow, or unconfigured, question generation continues ungrounded rather than failing the turn.
+- **Evaluation** — a separate service (`app/evaluation/`) that scores a completed interview's *persisted transcript* once — technical knowledge, reasoning, depth, and communication scores, a backend-computed overall score, strengths, weaknesses, and question-linked evidence — persists the result, and serves it idempotently afterward (a second request never re-runs the LLM call).
+- **Voice** — the interview *is* voice; there is no text-interview mode to opt out into. `POST /api/v1/voice/tts` synthesizes each question via Azure Speech for browser playback; `POST /api/v1/voice/stt/token` issues a short-lived Deepgram token so the browser can stream the candidate's microphone audio directly to Deepgram over its own WebSocket connection — the backend never proxies that audio. See [Voice architecture](#voice-architecture) below.
 
 ## Technology stack
 
@@ -31,7 +31,7 @@ create interview → start (first question) → adaptive question/answer loop �
 | Workflow orchestration | LangGraph |
 | LLM providers | OpenAI, Google Gemini (`google-genai`) |
 | Vector store | Qdrant |
-| Voice | Azure Cognitive Services Speech (TTS), Deepgram (STT), browser Web Speech API (fallback) |
+| Voice | Azure Cognitive Services Speech (TTS), Deepgram (STT) |
 | Testing | pytest / pytest-asyncio (backend), Vitest + Testing Library (frontend) |
 
 ## Repository structure
@@ -77,7 +77,7 @@ render.yaml           # backend Render Blueprint (see Deployment)
 - A local Redis instance
 - (Optional, for RAG) A local or cloud Qdrant instance
 - (Optional) An OpenAI or Gemini API key — the app starts and most of the API works without one; only the LLM-backed endpoints (`/start`, `/answers`) fail with a clear error until it's set
-- (Optional) Azure Speech and/or Deepgram credentials — only needed for the "remote" voice providers; the browser fallback needs neither
+- Azure Speech and Deepgram credentials — needed for the voice interview to actually work end-to-end (question playback and speech input). There is no browser-speech fallback: without these, the backend's `/voice/tts` and `/voice/stt/token` endpoints fail with a clear `VOICE_SERVICE_MISCONFIGURED` error, and the frontend surfaces that as a voice error state — the candidate can still type an answer into the visible answer field, but cannot hear questions or speak them
 
 ### Environment configuration
 
@@ -102,16 +102,16 @@ cp frontend/.env.example frontend/.env
 | `CORS_ALLOWED_ORIGINS` | required in production if the frontend is on a different origin | JSON array of allowed browser origins. Defaults to the local Vite dev server only (`http://localhost:5173`, `http://127.0.0.1:5173`) — a deployed frontend origin must be added explicitly. |
 | `LOG_LEVEL` (default `INFO`) | optional | Level `app.*` loggers emit at; an unrecognized value falls back to `INFO` rather than failing startup. |
 | `READINESS_TIMEOUT_SECONDS` (default `3`) | optional | Bounds each dependency check inside `GET /ready`. |
-| `AZURE_SPEECH_KEY` / `AZURE_SPEECH_REGION` / `AZURE_SPEECH_VOICE` / `TTS_TIMEOUT_SECONDS` | optional, backend-only | Azure Speech TTS. Left blank, `POST /voice/tts` fails with a clear `VOICE_SERVICE_MISCONFIGURED` — everything else keeps working. |
-| `DEEPGRAM_API_KEY` / `STT_AUTH_TIMEOUT_SECONDS` | optional, backend-only | Deepgram token issuance for STT. Left blank, `POST /voice/stt/token` fails the same way. |
+| `AZURE_SPEECH_KEY` / `AZURE_SPEECH_REGION` / `AZURE_SPEECH_VOICE` / `TTS_TIMEOUT_SECONDS` | required for voice output, backend-only | Azure Speech TTS — this is what speaks each question aloud. The app itself still starts without it; only `POST /voice/tts` fails, with a clear `VOICE_SERVICE_MISCONFIGURED` error. Never exposed to the frontend. |
+| `DEEPGRAM_API_KEY` / `STT_AUTH_TIMEOUT_SECONDS` | required for voice input, backend-only, **secret** | The permanent Deepgram API key. The backend only ever exchanges it server-side for a short-lived browser token (`POST /voice/stt/token`, via Deepgram's `/v1/auth/grant`) — the permanent key itself never reaches the frontend. Left blank, that one endpoint fails with the same `VOICE_SERVICE_MISCONFIGURED` error; everything else keeps working. |
 
 `frontend/.env.example` covers the frontend's much smaller surface:
 
 | Variable | Required? | Purpose |
 |---|---|---|
 | `VITE_API_BASE_URL` | required | Backend base URL, e.g. `http://localhost:8000/api/v1` locally. No fallback — if unset in a production build, every API call breaks loudly rather than silently hitting `localhost`. |
-| `VITE_TTS_MODE` (default `browser`) | optional | `browser` uses the Web Speech API directly; `remote` calls the backend's Azure TTS endpoint. Never a credential — only ever a mode switch, and `VITE_*` variables ship into the public bundle, so no credential could safely live here anyway. |
-| `VITE_STT_MODE` (default `browser`) | optional | Same idea for speech-to-text: `browser` uses Web Speech API `SpeechRecognition`; `remote` streams the microphone directly to Deepgram, authorized by a short-lived token the backend issues. |
+| `VITE_TTS_MODE` | **required**, must be `remote` | Selects the TTS provider that plays each question aloud, via the backend's Azure TTS endpoint. `remote` is the only supported value — there is no browser-speech fallback. Any other value (unset, mistyped, or a leftover `browser` from before the voice-first migration) makes the app fail explicitly at startup rather than silently choosing a different speech engine. Never a credential — only ever a mode switch, and `VITE_*` variables ship into the public bundle, so no credential could safely live here anyway. |
+| `VITE_STT_MODE` | **required**, must be `remote` | Selects the STT provider for the candidate's spoken answers: the browser streams the microphone directly to Deepgram, authorized by a short-lived token the backend issues. `remote` is the only supported value, with the same fail-explicitly behavior as `VITE_TTS_MODE` above — no browser-speech fallback exists. |
 
 Real credentials never belong in `.env.example` — every value there is a placeholder or a safe local default. Never commit a real `.env` file (both `backend/.gitignore` and `frontend/.gitignore` already exclude it).
 
@@ -224,16 +224,49 @@ A rejected request gets `429` with `{"error": {"code": "RATE_LIMITED", "message"
 - Framework: Vite (React).
 - `frontend/vercel.json` adds an explicit SPA rewrite (`/(.*) → /index.html`) so client-side routes (e.g. `/interview/:sessionId`) resolve correctly on direct navigation/refresh rather than 404ing at the edge.
 - `VITE_API_BASE_URL` must be set in the Vercel project's environment variables to the deployed backend's `/api/v1` URL — there's no fallback, so a missing value breaks the whole app loudly (not a silent `localhost` call).
+- `VITE_TTS_MODE`/`VITE_STT_MODE` must both be set to `remote` in the Vercel project's environment variables — see [Environment configuration](#environment-configuration).
+
+### PostgreSQL, Redis, and Qdrant
+
+- **PostgreSQL** and **Redis** each run as their own managed instance in the same Render environment as the backend, referenced via `DATABASE_URL`/`REDIS_URL` (both dashboard-managed, `sync: false` in `render.yaml` — see above).
+- **Qdrant** runs on Qdrant Cloud, referenced via `QDRANT_URL`/`QDRANT_API_KEY`. As noted under [Knowledge / RAG](#core-architecture), this is a grounding layer only — the app runs (with ungrounded question generation) even if it's unreachable.
 
 ## Voice architecture
 
-Voice is an optional interview mode, not a separate product surface — the same interview lifecycle and API drive both text and voice mode.
+Voice is the interview — there is no text-interview mode and no choice between text and voice. The candidate opens an interview and is talking to it: the AI interviewer speaks every question aloud, and the candidate answers by speaking. (The answer field is still visible and editable as a supporting display of the transcript, and can be typed into directly, but there is no separate "text mode" to switch to.)
 
-- **Text-to-speech**: `POST /api/v1/voice/tts` synthesizes a question via Azure Speech (backend-only credentials, never exposed to the frontend). A small, deterministic speech-presentation layer (`frontend/src/voice/speechPresentation.js`) cleans up markdown and expands a short list of technical-term pronunciations before handing text to any TTS provider — it never changes the question the candidate actually sees.
-- **Speech-to-text**: `POST /api/v1/voice/stt/token` exchanges the backend's permanent Deepgram key for a short-lived token; the browser then streams the microphone directly to Deepgram over that token — audio never passes through the backend. The temporary token is held only in memory for the duration of one connection, never persisted.
-- **Browser fallback**: when the "remote" providers aren't enabled (`VITE_TTS_MODE`/`VITE_STT_MODE` left at their `browser` default, or the remote provider errors), the frontend falls back to the browser's own Web Speech API (`SpeechSynthesis`/`SpeechRecognition`). Support varies significantly by browser — Chrome and Edge are the most reliable; Safari and Firefox have limited or no `SpeechRecognition` support.
+The end-to-end turn looks like this:
+
+```
+question generated
+      ↓
+Azure Speech TTS (POST /api/v1/voice/tts)
+      ↓
+browser audio playback
+      ↓
+playback finishes → candidate speaks
+      ↓
+browser MediaRecorder captures microphone audio
+      ↓
+direct WebSocket connection, browser → Deepgram
+      ↓
+interim transcript (displayed live) / final transcript (committed to the answer)
+      ↓
+POST /api/v1/interviews/{id}/answers   (the existing, unchanged answer endpoint)
+      ↓
+InterviewService → LangGraph
+      ↓
+next question persisted
+      ↓
+Azure Speech TTS again
+```
+
+- **Text-to-speech**: `POST /api/v1/voice/tts` synthesizes each question via Azure Speech (backend-only credentials, never exposed to the frontend) and returns audio for the browser to play. A small, deterministic speech-presentation layer (`frontend/src/voice/speechPresentation.js`) cleans up markdown and expands a short list of technical-term pronunciations before handing text to the TTS provider — it never changes the question the candidate actually sees.
+- **Speech-to-text — the backend does not proxy this audio.** `POST /api/v1/voice/stt/token` exchanges the backend's permanent Deepgram key for a short-lived, single-connection authorization token; the browser then opens its own WebSocket connection **directly to Deepgram** using that token and streams microphone audio to it over that connection. The backend is involved only in minting the token — no interview audio, of any kind, ever transits through the backend. The temporary token is held only in memory for the duration of one connection, never persisted, and the permanent key never leaves the backend.
+- **No browser-speech fallback of any kind exists.** There is no `SpeechRecognition`/`webkitSpeechRecognition` or `speechSynthesis`/`SpeechSynthesisUtterance` implementation anywhere in the frontend. `VITE_TTS_MODE` and `VITE_STT_MODE` must both be set to `remote`; any other value makes the app fail explicitly at startup rather than silently falling back to a browser-native speech engine.
 - **State machine**: `frontend/src/voice/useVoiceInterviewSession.js` + `voiceReducer.js` own the whole TTS/STT lifecycle (automatic question playback, automatic listening after natural playback completion, manual replay/stop, error recovery) behind a single, race-protected state machine — every async provider callback carries an attempt id so a stale/cancelled callback can never corrupt a newer attempt's state.
-- **Current status**: as of this writing, no real Azure Speech or Deepgram credentials are configured in this deployment's environment. Both remote providers and their error paths are covered by tests against mocked/faked SDKs, and the full voice interaction flow (state machine, automatic TTS→STT handoff, error recovery) has been verified live in a real browser against the **browser-fallback** providers — but **not** against the real Azure/Deepgram services, which remains a genuine deployment step, not something already verified.
+- **Stalled-recognition recovery**: after the candidate stops talking (Deepgram signals utterance completion), the state machine enters a brief `PROCESSING` state while it waits for the provider's final transcript or connection close. If that expected completion never arrives, a bounded timeout gives up waiting, cleans up the stalled provider connection, and returns the interface to a normal, usable state — the same recovery path a manual stop takes. **This never submits an answer on its own and is never triggered by silence alone** — it only recovers a connection that has already signaled it's done and then gone quiet; whatever transcript was already captured is preserved either way, and the candidate still submits explicitly.
+- **Current status**: Azure Speech is configured and has been verified working in the production environment. Deepgram production configuration still requires `DEEPGRAM_API_KEY` to be set in the Render environment — until that's done, `POST /voice/stt/token` (and therefore live speech input) does not work in production. Production voice input should not be considered verified until that credential is configured and the flow is checked against the live Deepgram service.
 
 ## Security notes
 
@@ -247,8 +280,7 @@ Voice is an optional interview mode, not a separate product surface — the same
 ## Known limitations
 
 - No authentication or per-user ownership model exists anywhere in the app; a session ID is effectively a bearer credential (see [Security notes](#security-notes)).
-- Real Azure Speech / Deepgram production credentials are not currently configured in this environment — remote voice providers are implemented and tested against mocks, but not yet verified against the live third-party services.
-- Browser-fallback speech recognition/synthesis quality and availability depend entirely on the candidate's browser (best on Chrome/Edge; limited or absent on Safari/Firefox).
+- Azure Speech (TTS) is configured and verified working in production. **Deepgram (STT) is not yet configured in production** — `DEEPGRAM_API_KEY` still needs to be set in the Render environment. Until that's done, question playback works in production but live speech input does not; production voice input should not be considered verified until that credential is set and the flow is checked against the real Deepgram service.
 - There is no recruiter/admin dashboard — result data is only accessible via the API/frontend result page for a given session ID.
 - There is no in-browser coding IDE or code-execution environment; answers are free-text (typed or spoken), not executed code.
 - RAG grounding is best-effort: Qdrant and the embedding provider are both optional and fail open (ungrounded generation), so retrieval quality depends on whether they're configured and reachable.

@@ -345,11 +345,169 @@ _JAVA_DEVELOPER = RoleDefinition(
 )
 
 
+_SDE = RoleDefinition(
+    role=Role.SDE,
+    display_name="Software Development Engineer",
+    description="General software engineering: algorithms, backend systems, and practical engineering.",
+    topics=[
+        _topic(
+            InterviewTopic.DATA_STRUCTURES_ALGORITHMS,
+            "Data Structures & Algorithms",
+            "Core problem-solving building blocks and their complexity trade-offs.",
+            [
+                _concept("arrays_and_hashing", "Arrays & Hashing", "Contiguous storage and hash-based lookup structures."),
+                _concept("complexity_analysis", "Complexity Analysis", "Reasoning about time/space trade-offs of an approach."),
+                _concept("recursion_and_trees", "Recursion & Trees", "Recursive problem decomposition and tree-shaped data."),
+            ],
+        ),
+        _topic(
+            InterviewTopic.BACKEND_RUNTIME,
+            "Backend Runtime",
+            "How a backend service executes and handles concurrent work.",
+            [
+                _concept("async_io", "Async I/O", "Non-blocking handling of concurrent requests."),
+                _concept("process_management", "Process Management", "Workers, threads, and process lifecycles."),
+                _concept("event_loop", "Event Loop", "Single-threaded event-driven request handling."),
+            ],
+        ),
+        _topic(
+            InterviewTopic.REST_APIS,
+            "REST APIs",
+            "Designing HTTP APIs for backend services.",
+            [
+                _concept("resource_design", "Resource Design", "Modeling domain concepts as REST resources."),
+                _concept("status_codes", "Status Codes", "Communicating outcomes via HTTP semantics."),
+                _concept("versioning", "Versioning", "Evolving an API without breaking clients."),
+            ],
+        ),
+        _topic(
+            InterviewTopic.DATABASES,
+            "Databases",
+            "Storing and querying data reliably.",
+            [
+                _concept("indexing", "Indexing", "Speeding up lookups at the cost of writes/storage."),
+                _concept("transactions", "Transactions", "Atomic, consistent groups of operations."),
+                _concept("normalization", "Normalization", "Structuring relational data to reduce redundancy."),
+            ],
+        ),
+        _topic(
+            InterviewTopic.SYSTEM_DESIGN,
+            "System Design",
+            "Architecting backend systems that scale reliably.",
+            [
+                _concept("scalability", "Scalability", "Handling growing load without falling over."),
+                _concept("load_balancing", "Load Balancing", "Distributing traffic across instances."),
+                _concept("availability", "Availability", "Keeping a system usable despite failures."),
+            ],
+        ),
+    ],
+)
+
+_SDE_INTERN = RoleDefinition(
+    role=Role.SDE_INTERN,
+    display_name="SDE Intern",
+    description="Programming fundamentals, data structures, and object-oriented basics.",
+    topics=[
+        _topic(
+            InterviewTopic.DATA_STRUCTURES_ALGORITHMS,
+            "Data Structures & Algorithms",
+            "Core problem-solving building blocks and their complexity trade-offs.",
+            [
+                _concept("arrays_and_hashing", "Arrays & Hashing", "Contiguous storage and hash-based lookup structures."),
+                _concept("complexity_analysis", "Complexity Analysis", "Reasoning about time/space trade-offs of an approach."),
+                _concept("recursion_and_trees", "Recursion & Trees", "Recursive problem decomposition and tree-shaped data."),
+            ],
+        ),
+        _topic(
+            InterviewTopic.OOP,
+            "Object-Oriented Programming",
+            "Core OOP principles applied in practice.",
+            [
+                _concept("inheritance", "Inheritance", "Reusing and extending behavior through class hierarchies."),
+                _concept("polymorphism", "Polymorphism", "Treating different types through a common interface."),
+                _concept("encapsulation", "Encapsulation", "Hiding internal state behind a controlled interface."),
+            ],
+        ),
+        _topic(
+            InterviewTopic.REST_APIS,
+            "REST APIs",
+            "Designing HTTP APIs for backend services.",
+            [
+                _concept("resource_design", "Resource Design", "Modeling domain concepts as REST resources."),
+                _concept("status_codes", "Status Codes", "Communicating outcomes via HTTP semantics."),
+                _concept("versioning", "Versioning", "Evolving an API without breaking clients."),
+            ],
+        ),
+    ],
+)
+
+_FULL_STACK_DEVELOPER = RoleDefinition(
+    role=Role.FULL_STACK_DEVELOPER,
+    display_name="Full Stack Developer",
+    description="React / Node.js — frontend, backend, APIs, and databases end to end.",
+    topics=[
+        _topic(
+            InterviewTopic.JAVASCRIPT,
+            "JavaScript",
+            "Core language mechanics behind the browser and Node runtimes.",
+            [
+                _concept("closures", "Closures", "Functions retaining access to their defining scope."),
+                _concept("event_loop", "Event Loop", "How JavaScript schedules async callbacks."),
+                _concept("promises", "Promises", "Representing eventual async results."),
+            ],
+        ),
+        _topic(
+            InterviewTopic.REACT,
+            "React",
+            "Building UIs with React's component and rendering model.",
+            [
+                _concept("hooks", "Hooks", "useState/useEffect and other composable component logic."),
+                _concept("rendering", "Rendering", "How and when React re-renders components."),
+                _concept("performance", "Performance", "Avoiding unnecessary renders and re-computation."),
+            ],
+        ),
+        _topic(
+            InterviewTopic.BACKEND_RUNTIME,
+            "Backend Runtime",
+            "How a backend service executes and handles concurrent work.",
+            [
+                _concept("async_io", "Async I/O", "Non-blocking handling of concurrent requests."),
+                _concept("process_management", "Process Management", "Workers, threads, and process lifecycles."),
+                _concept("event_loop", "Event Loop", "Single-threaded event-driven request handling."),
+            ],
+        ),
+        _topic(
+            InterviewTopic.REST_APIS,
+            "REST APIs",
+            "Designing HTTP APIs for backend services.",
+            [
+                _concept("resource_design", "Resource Design", "Modeling domain concepts as REST resources."),
+                _concept("status_codes", "Status Codes", "Communicating outcomes via HTTP semantics."),
+                _concept("versioning", "Versioning", "Evolving an API without breaking clients."),
+            ],
+        ),
+        _topic(
+            InterviewTopic.DATABASES,
+            "Databases",
+            "Storing and querying data reliably.",
+            [
+                _concept("indexing", "Indexing", "Speeding up lookups at the cost of writes/storage."),
+                _concept("transactions", "Transactions", "Atomic, consistent groups of operations."),
+                _concept("normalization", "Normalization", "Structuring relational data to reduce redundancy."),
+            ],
+        ),
+    ],
+)
+
+
 ROLE_CATALOG: dict[Role, RoleDefinition] = {
     Role.AI_ENGINEER: _AI_ENGINEER,
     Role.FRONTEND_DEVELOPER: _FRONTEND_DEVELOPER,
     Role.BACKEND_DEVELOPER: _BACKEND_DEVELOPER,
     Role.JAVA_DEVELOPER: _JAVA_DEVELOPER,
+    Role.SDE: _SDE,
+    Role.SDE_INTERN: _SDE_INTERN,
+    Role.FULL_STACK_DEVELOPER: _FULL_STACK_DEVELOPER,
 }
 
 

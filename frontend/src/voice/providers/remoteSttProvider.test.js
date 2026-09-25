@@ -248,16 +248,35 @@ describe('remoteSttProvider (fake getUserMedia/MediaRecorder/WebSocket, no real 
     expect(onFinal).toHaveBeenNthCalledWith(2, 'second chunk')
   })
 
-  it('9. explicit stop fires onStopped', async () => {
+  it('9. explicit stop fires onStopped once Deepgram closes the connection in response', async () => {
     const provider = createRemoteSttProvider()
     const onStopped = vi.fn()
     await provider.start({ onStopped })
     await flush()
-    openSocket(FakeWebSocket.instances[0])
+    const ws = FakeWebSocket.instances[0]
+    openSocket(ws)
+
+    const stopPromise = provider.stop()
+    expect(onStopped).not.toHaveBeenCalled() // not yet — still waiting for the graceful close
+    // Deepgram finalizes any pending audio and closes the socket itself in
+    // response to the CloseStream message stop() sends it.
+    ws.onclose({ code: 1000 })
+    await stopPromise
+
+    expect(onStopped).toHaveBeenCalledOnce()
+  })
+
+  it('9b. stop() sends Deepgram a CloseStream message rather than abruptly dropping the connection', async () => {
+    const provider = createRemoteSttProvider()
+    await provider.start({})
+    await flush()
+    const ws = FakeWebSocket.instances[0]
+    openSocket(ws)
 
     provider.stop()
 
-    expect(onStopped).toHaveBeenCalledOnce()
+    expect(ws.sentMessages).toContainEqual(JSON.stringify({ type: 'CloseStream' }))
+    expect(ws.close).not.toHaveBeenCalled() // not yet — waiting for Deepgram's own close first
   })
 
   it('10. explicit stop does not produce a fake final transcript', async () => {
@@ -266,9 +285,12 @@ describe('remoteSttProvider (fake getUserMedia/MediaRecorder/WebSocket, no real 
     const onStopped = vi.fn()
     await provider.start({ onFinal, onStopped })
     await flush()
-    openSocket(FakeWebSocket.instances[0])
+    const ws = FakeWebSocket.instances[0]
+    openSocket(ws)
 
-    provider.stop()
+    const stopPromise = provider.stop()
+    ws.onclose({ code: 1000 })
+    await stopPromise
 
     expect(onFinal).not.toHaveBeenCalled()
     expect(onStopped).toHaveBeenCalledOnce()
@@ -284,9 +306,102 @@ describe('remoteSttProvider (fake getUserMedia/MediaRecorder/WebSocket, no real 
     openSocket(ws)
 
     sendMessage(ws, { type: 'Results', is_final: true, channel: { alternatives: [{ transcript: 'last words' }] } })
-    provider.stop()
+    const stopPromise = provider.stop()
+    ws.onclose({ code: 1000 })
+    await stopPromise
 
     expect(onFinal).toHaveBeenCalledWith('last words')
+    expect(onStopped).toHaveBeenCalledOnce()
+  })
+
+  it('10c. a final transcript that arrives during the graceful-stop window (after stop(), before Deepgram closes) is still delivered, not lost', async () => {
+    const provider = createRemoteSttProvider()
+    const onFinal = vi.fn()
+    const onStopped = vi.fn()
+    await provider.start({ onFinal, onStopped })
+    await flush()
+    const ws = FakeWebSocket.instances[0]
+    openSocket(ws)
+
+    const stopPromise = provider.stop()
+    // Deepgram is still finishing classification of audio already sent —
+    // its trailing final arrives before it actually closes the connection.
+    sendMessage(ws, { type: 'Results', is_final: true, channel: { alternatives: [{ transcript: 'the trailing words' }] } })
+    ws.onclose({ code: 1000 })
+    await stopPromise
+
+    expect(onFinal).toHaveBeenCalledWith('the trailing words')
+    expect(onStopped).toHaveBeenCalledOnce()
+  })
+
+  it('10d. multiple final chunks can still arrive during the graceful-stop window, each delivered once', async () => {
+    const provider = createRemoteSttProvider()
+    const onFinal = vi.fn()
+    await provider.start({ onFinal })
+    await flush()
+    const ws = FakeWebSocket.instances[0]
+    openSocket(ws)
+
+    const stopPromise = provider.stop()
+    sendMessage(ws, { type: 'Results', is_final: true, channel: { alternatives: [{ transcript: 'first trailing chunk' }] } })
+    sendMessage(ws, { type: 'Results', is_final: true, channel: { alternatives: [{ transcript: 'second trailing chunk' }] } })
+    ws.onclose({ code: 1000 })
+    await stopPromise
+
+    expect(onFinal).toHaveBeenNthCalledWith(1, 'first trailing chunk')
+    expect(onFinal).toHaveBeenNthCalledWith(2, 'second trailing chunk')
+  })
+
+  it('10e. stop() settles via its own bounded timeout if Deepgram never closes the connection', async () => {
+    vi.useFakeTimers()
+    try {
+      const provider = createRemoteSttProvider()
+      const onStopped = vi.fn()
+      await provider.start({ onStopped })
+      await flush()
+      openSocket(FakeWebSocket.instances[0])
+
+      const stopPromise = provider.stop()
+      await vi.advanceTimersByTimeAsync(5000)
+      await stopPromise
+
+      expect(onStopped).toHaveBeenCalledOnce()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('10f. a genuine connection error during the graceful-stop window still settles as a normal stop, not an error', async () => {
+    const provider = createRemoteSttProvider()
+    const onStopped = vi.fn()
+    const onError = vi.fn()
+    await provider.start({ onStopped, onError })
+    await flush()
+    const ws = FakeWebSocket.instances[0]
+    openSocket(ws)
+
+    const stopPromise = provider.stop()
+    ws.onerror(new Event('error'))
+    await stopPromise
+
+    expect(onStopped).toHaveBeenCalledOnce()
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  it('10g. calling stop() twice in a row is safe and only fires onStopped once', async () => {
+    const provider = createRemoteSttProvider()
+    const onStopped = vi.fn()
+    await provider.start({ onStopped })
+    await flush()
+    const ws = FakeWebSocket.instances[0]
+    openSocket(ws)
+
+    const first = provider.stop()
+    const second = provider.stop()
+    ws.onclose({ code: 1000 })
+    await first
+    await second
+
     expect(onStopped).toHaveBeenCalledOnce()
   })
 
@@ -302,15 +417,19 @@ describe('remoteSttProvider (fake getUserMedia/MediaRecorder/WebSocket, no real 
     expect(track.stop).toHaveBeenCalledOnce()
   })
 
-  it('12. stop() closes the streaming connection', async () => {
+  it('12. stop() closes the streaming connection once Deepgram has settled it', async () => {
     const provider = createRemoteSttProvider()
     await provider.start({})
     await flush()
-    openSocket(FakeWebSocket.instances[0])
+    const ws = FakeWebSocket.instances[0]
+    openSocket(ws)
 
-    provider.stop()
+    const stopPromise = provider.stop()
+    expect(ws.close).not.toHaveBeenCalled() // not yet — waiting on the graceful close first
+    ws.onclose({ code: 1000 })
+    await stopPromise
 
-    expect(FakeWebSocket.instances[0].close).toHaveBeenCalledOnce()
+    expect(ws.close).toHaveBeenCalledOnce()
   })
 
   it('13. a WebSocket error maps to a connection-error, never onStopped/onFinal', async () => {
@@ -410,6 +529,30 @@ describe('remoteSttProvider (fake getUserMedia/MediaRecorder/WebSocket, no real 
     // first.onStart legitimately fired once, earlier in this test, from
     // openSocket() on the first connection — it must not fire again.
     expect(first.onStart).toHaveBeenCalledOnce()
+  })
+
+  it('17b. a second start() superseding a still-pending graceful stop() settles that stop() without double-firing onStopped', async () => {
+    const provider = createRemoteSttProvider()
+    const first = { onStopped: vi.fn() }
+    await provider.start(first)
+    await flush()
+    const firstWs = FakeWebSocket.instances[0]
+    openSocket(firstWs)
+
+    const stopPromise = provider.stop() // gracefully finishing, not yet settled
+    expect(first.onStopped).not.toHaveBeenCalled()
+
+    const second = { onStart: vi.fn() }
+    const secondStart = provider.start(second) // abandons the first outright
+
+    expect(first.onStopped).toHaveBeenCalledOnce() // settled immediately by the supersede, not a second time later
+    await stopPromise // never hangs even though Deepgram's close never arrived
+    expect(first.onStopped).toHaveBeenCalledOnce()
+
+    await secondStart
+    await flush()
+    openSocket(FakeWebSocket.instances[1])
+    expect(second.onStart).toHaveBeenCalledOnce()
   })
 
   it('18. stale events from a superseded connection are ignored', async () => {

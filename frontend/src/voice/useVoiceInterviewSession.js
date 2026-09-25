@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react'
 import { createVoiceProviders } from './providers/index.js'
-import { createSpeechPresentation } from './speechPresentation.js'
+import { buildSpokenQuestion, createSpeechPresentation } from './speechPresentation.js'
 import {
   createInitialVoiceState,
   getActiveChannel,
@@ -38,7 +38,13 @@ export const PROCESSING_TIMEOUT_MS = 8000
 // leaving 'ready' no longer implies an unmount that would otherwise stop
 // any in-flight speech/listening on its own — this is what takes over that
 // job instead.
-export function useVoiceInterviewSession({ questionId, questionText, active = true, onTranscript }) {
+export function useVoiceInterviewSession({
+  questionId,
+  questionText,
+  questionLeadIn,
+  active = true,
+  onTranscript,
+}) {
   const [state, dispatch] = useReducer(voiceReducer, undefined, createInitialVoiceState)
 
   const onTranscriptRef = useRef(onTranscript)
@@ -66,11 +72,14 @@ export function useVoiceInterviewSession({ questionId, questionText, active = tr
       if (!questionText) return
       const attemptId = nextAttemptId()
       dispatch({ type: VOICE_ACTION.SPEAK_REQUESTED, auto, attemptId })
-      // The UI keeps showing questionText verbatim (rendered directly from
-      // the question prop, never through this hook) — only what's handed
-      // to the TTS provider goes through the deterministic speech
-      // presentation layer first.
-      const presentation = createSpeechPresentation(questionText)
+      // The UI keeps showing questionText (and questionLeadIn) verbatim,
+      // rendered directly from the question prop, never through this hook —
+      // only what's handed to the TTS provider is combined into one spoken
+      // turn and run through the deterministic speech presentation layer.
+      // This is still exactly one speak() call: the lead-in is never spoken
+      // as a separate utterance.
+      const spokenQuestion = buildSpokenQuestion(questionLeadIn, questionText)
+      const presentation = createSpeechPresentation(spokenQuestion)
       providers.tts.speak(presentation.text, {
         onStart: () => dispatch({ type: VOICE_ACTION.TTS_STARTED, attemptId }),
         onNaturalEnd: () => dispatch({ type: VOICE_ACTION.TTS_NATURAL_END, attemptId }),
@@ -78,7 +87,7 @@ export function useVoiceInterviewSession({ questionId, questionText, active = tr
         onError: (error) => dispatch({ type: VOICE_ACTION.TTS_ERROR, attemptId, error }),
       })
     },
-    [providers, questionText, nextAttemptId],
+    [providers, questionText, questionLeadIn, nextAttemptId],
   )
 
   const startListening = useCallback(
@@ -104,6 +113,27 @@ export function useVoiceInterviewSession({ questionId, questionText, active = tr
   const startListeningManually = useCallback(() => startListening(false), [startListening])
   const stopListening = useCallback(() => providers.stt.stop(), [providers])
   const clearError = useCallback(() => dispatch({ type: VOICE_ACTION.CLEAR_ERROR }), [])
+
+  // The candidate's explicit "Finish Answer" — the ONLY thing allowed to
+  // treat an answer as complete (see voiceReducer.js's FINISH_REQUESTED: a
+  // Deepgram UtteranceEnd/pause never does this on its own). If the mic
+  // isn't actually active there is nothing to wind down — the caller
+  // should just proceed straight to submitting whatever text already
+  // exists (typed, or from an earlier, already-stopped listening attempt).
+  // When it is active, this moves the room into the existing PROCESSING
+  // state and asks the provider to stop, returning a promise that resolves
+  // once that has fully settled (any trailing final transcript delivered,
+  // then STT_STOPPED back to IDLE) — so a caller that must not submit
+  // before the transcript is complete (Interview.jsx) can await it rather
+  // than racing a still-finalizing transcript.
+  const finishListening = useCallback(() => {
+    if (state.status !== VOICE_STATUS.CANDIDATE_LISTENING && state.status !== VOICE_STATUS.CANDIDATE_SPEAKING) {
+      return Promise.resolve()
+    }
+    const attemptId = state.sttAttemptId
+    dispatch({ type: VOICE_ACTION.FINISH_REQUESTED, attemptId })
+    return Promise.resolve(providers.stt.stop())
+  }, [state.status, state.sttAttemptId, providers])
   const resetForQuestion = useCallback(
     (newQuestionId) => {
       providers.tts.stop()
@@ -166,11 +196,15 @@ export function useVoiceInterviewSession({ questionId, questionText, active = tr
     stateRef.current = state
   }, [state])
 
-  // Recovers from a stuck PROCESSING state: normally STT_SPEECH_ENDED
-  // (Deepgram's UtteranceEnd) is followed shortly by either another
-  // STT_FINAL (back to CANDIDATE_LISTENING) or STT_STOPPED/STT_ERROR (back
-  // to rest) — see voiceReducer.js. If neither ever arrives, the mic
-  // control is left disabled indefinitely (VoiceControls disables it while
+  // Recovers from a stuck PROCESSING state. PROCESSING is now only ever
+  // entered via finishListening() (the candidate's explicit Finish Answer —
+  // see voiceReducer.js's FINISH_REQUESTED; a Deepgram UtteranceEnd/pause no
+  // longer enters it at all), which itself already calls providers.stt.stop()
+  // and has its own short, bounded grace period for a trailing transcript
+  // (see remoteSttProvider.js's GRACEFUL_STOP_TIMEOUT_MS). This timeout is
+  // the outer safety net for the rare case even that never resolves — e.g.
+  // the provider's stop() promise never settles. Without it, the mic control
+  // would be left disabled indefinitely (VoiceControls disables it while
   // processing) even though the candidate can still submit whatever was
   // already captured. This effect is keyed on `sttAttemptId`, exactly like
   // every other STT lifecycle event, so a question change or a fresh
@@ -248,6 +282,7 @@ export function useVoiceInterviewSession({ questionId, questionText, active = tr
       stopSpeaking,
       startListening: startListeningManually,
       stopListening,
+      finishListening,
       resetForQuestion,
       clearError,
     },

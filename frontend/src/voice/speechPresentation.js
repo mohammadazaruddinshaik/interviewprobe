@@ -105,3 +105,33 @@ export function createSpeechPresentation(text) {
 
   return { text: spoken, ssml: null }
 }
+
+// Joins the interviewer's short conversational reaction (`leadIn`, e.g.
+// "That's interesting. You mentioned cache invalidation.") with the actual
+// question text into the single plain-text string that gets spoken as one
+// TTS utterance. This is a literal concatenation, not a rewrite — it exists
+// only because `leadIn` and question text arrive as two separate fields but
+// must be spoken (and go through createSpeechPresentation) as one turn.
+//
+// `leadIn` is optional and ephemeral: null/undefined/empty/whitespace-only
+// all collapse to "no lead-in", and the result is exactly the question text
+// with no leftover literal "null"/"undefined" or extra whitespace. If the
+// question text already begins with the lead-in (defensively guarding
+// against the model echoing it into both fields), the lead-in is skipped
+// rather than spoken twice.
+export function buildSpokenQuestion(leadIn, questionText) {
+  const trimmedLeadIn = (leadIn ?? '').trim()
+  const trimmedQuestion = (questionText ?? '').trim()
+
+  if (!trimmedLeadIn) {
+    return trimmedQuestion
+  }
+  if (!trimmedQuestion) {
+    return trimmedLeadIn
+  }
+  if (trimmedQuestion.toLowerCase().startsWith(trimmedLeadIn.toLowerCase())) {
+    return trimmedQuestion
+  }
+
+  return `${trimmedLeadIn} ${trimmedQuestion}`
+}

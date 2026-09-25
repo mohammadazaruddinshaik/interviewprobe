@@ -14,10 +14,7 @@ function VoiceInterviewView({
   voice,
   interviewer = INTERVIEWER,
   question,
-  questionLimit,
   roleLabel,
-  difficultyLabel,
-  topicLabel,
   answer,
   onAnswerChange,
   onSubmit,
@@ -27,24 +24,20 @@ function VoiceInterviewView({
   const { state, activeChannel, isSpeakerSpeaking, micUiState, ttsSupported, sttSupported, commands } = voice
 
   const questionText = question?.text ?? ''
+  const leadIn = question?.lead_in ?? ''
   const canSubmit = answer.trim().length > 0 && !submitting
   const hasError = state.status === VOICE_STATUS.ERROR && state.error
 
   return (
     <div className="flex min-h-screen flex-col bg-cream">
-      <VoiceInterviewHeader
-        roleLabel={roleLabel}
-        difficultyLabel={difficultyLabel}
-        topicLabel={topicLabel}
-        questionNumber={question?.sequence}
-        questionLimit={questionLimit}
-      />
+      <VoiceInterviewHeader roleLabel={roleLabel} />
 
       <main className="mx-auto grid w-full max-w-5xl flex-1 gap-4 px-6 py-6 sm:px-8 lg:grid-cols-[1fr_260px] lg:items-start lg:gap-6">
         <InterviewerStage
           interviewer={interviewer}
           isSpeaking={isSpeakerSpeaking}
           questionText={questionText}
+          leadIn={leadIn}
           status={state.status}
           interimTranscript={state.interimTranscript}
           answer={answer}

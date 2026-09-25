@@ -31,7 +31,14 @@ const { fakeTts, fakeStt } = vi.hoisted(() => {
       start: vi.fn((callbacks) => {
         lastCallbacks = callbacks
       }),
-      stop: vi.fn(),
+      // Mirrors the real provider's eventual settling: stop() ends the
+      // attempt and fires its own onStopped — never a fabricated final
+      // transcript. Finish Answer (see Interview.jsx's finishListening
+      // orchestration) awaits this before submitting, so it must actually
+      // resolve for those tests to reach submitInterviewAnswer at all.
+      stop: vi.fn(() => {
+        lastCallbacks?.onStopped?.()
+      }),
       dispose: vi.fn(),
       _callbacks: () => lastCallbacks,
     }
@@ -106,7 +113,7 @@ describe('remote STT integration: VoiceInterviewView -> useVoiceInterviewSession
     // STT never submits by itself.
     expect(submitInterviewAnswer).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Submit answer' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Finish Answer' }))
     await waitFor(() => expect(submitInterviewAnswer).toHaveBeenCalledOnce())
     expect(submitInterviewAnswer).toHaveBeenCalledWith(
       'session-1',
@@ -164,11 +171,158 @@ describe('remote STT integration: VoiceInterviewView -> useVoiceInterviewSession
     const stopCallsBeforeClick = fakeStt.stop.mock.calls.length
     fireEvent.click(screen.getByRole('button', { name: 'Stop' }))
     expect(fakeStt.stop.mock.calls.length).toBe(stopCallsBeforeClick + 1)
-
-    callbacks.onStopped()
+    // The fake's stop() already fires onStopped synchronously (mirroring
+    // the real provider's eventual settling) — no separate manual trigger
+    // needed here.
 
     expect(screen.getByLabelText('Your answer').value).toBe('')
     expect(submitInterviewAnswer).not.toHaveBeenCalled()
   })
 
+  // -------------------------------------------------------------------
+  // Natural pause / Finish Answer semantics
+  // -------------------------------------------------------------------
+
+  it('1&2. a short pause (Deepgram UtteranceEnd) never submits, never starts evaluation, and the mic stays usable', async () => {
+    await renderReadyInterview()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Speak answer' }))
+    const callbacks = fakeStt._callbacks()
+    callbacks.onSpeechDetected()
+    callbacks.onFinal('I would use Redis for caching because')
+
+    // "[pause]" — Deepgram's UtteranceEnd fires after ~1s of silence.
+    callbacks.onSpeechEnd()
+
+    expect(submitInterviewAnswer).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: 'Evaluating your answer…' })).toBeNull()
+    // The mic control is still the ordinary, clickable "listening" control —
+    // never disabled/"Processing…" from a mere pause.
+    expect(screen.getByRole('button', { name: 'Stop' })).toHaveProperty('disabled', false)
+  })
+
+  it('3. the candidate can keep talking after a pause, and Finish Answer submits the complete, combined answer exactly once', async () => {
+    await renderReadyInterview()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Speak answer' }))
+    const callbacks = fakeStt._callbacks()
+    callbacks.onSpeechDetected()
+    callbacks.onFinal('I would use Redis for caching because')
+    await waitFor(() => expect(screen.getByLabelText('Your answer').value).toBe('I would use Redis for caching because'))
+    callbacks.onSpeechEnd() // pause — must not end the attempt
+
+    // "...and I would invalidate the cache when the underlying data changes."
+    callbacks.onSpeechDetected()
+    callbacks.onFinal('and I would invalidate the cache when the underlying data changes.')
+    await waitFor(() =>
+      expect(screen.getByLabelText('Your answer').value).toBe(
+        'I would use Redis for caching because and I would invalidate the cache when the underlying data changes.',
+      ),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Finish Answer' }))
+    await waitFor(() => expect(submitInterviewAnswer).toHaveBeenCalledOnce())
+    expect(submitInterviewAnswer).toHaveBeenCalledWith(
+      'session-1',
+      expect.objectContaining({
+        answer: 'I would use Redis for caching because and I would invalidate the cache when the underlying data changes.',
+      }),
+    )
+  })
+
+  it('8. a final transcript that only arrives during the Finish Answer stop race is still included in what gets submitted', async () => {
+    await renderReadyInterview()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Speak answer' }))
+    const callbacks = fakeStt._callbacks()
+    callbacks.onSpeechDetected()
+    callbacks.onFinal('Redis uses SETNX with a TTL')
+    await waitFor(() => expect(screen.getByLabelText('Your answer').value).toBe('Redis uses SETNX with a TTL'))
+
+    // Deepgram is still finishing classification of the last bit of audio
+    // when Finish Answer is clicked — its trailing final for that audio
+    // arrives as part of the provider's own stop() settling, exactly as
+    // remoteSttProvider.test.js's "10c" models at the provider level.
+    fakeStt.stop.mockImplementationOnce(() => {
+      callbacks.onFinal('for the lock.')
+      callbacks.onStopped()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Finish Answer' }))
+    await waitFor(() => expect(submitInterviewAnswer).toHaveBeenCalledOnce())
+    expect(submitInterviewAnswer).toHaveBeenCalledWith(
+      'session-1',
+      expect.objectContaining({ answer: 'Redis uses SETNX with a TTL for the lock.' }),
+    )
+  })
+
+  it('9. clicking Finish Answer without ever having spoken or typed anything submits nothing', async () => {
+    await renderReadyInterview()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Speak answer' }))
+    const callbacks = fakeStt._callbacks()
+    callbacks.onStart()
+
+    // The button is disabled while the answer is empty, matching the
+    // existing canSubmit gate — nothing to click through in the first
+    // place, and no submission happens regardless.
+    expect(screen.getByRole('button', { name: 'Finish Answer' })).toHaveProperty('disabled', true)
+    fireEvent.click(screen.getByRole('button', { name: 'Finish Answer' }))
+
+    expect(submitInterviewAnswer).not.toHaveBeenCalled()
+  })
+
+  it('6. Finish Answer submits exactly once, even if the button is clicked again while it is settling', async () => {
+    await renderReadyInterview()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Speak answer' }))
+    const callbacks = fakeStt._callbacks()
+    callbacks.onFinal('A complete answer.')
+    await waitFor(() => expect(screen.getByLabelText('Your answer').value).toBe('A complete answer.'))
+
+    const finishButton = screen.getByRole('button', { name: 'Finish Answer' })
+    fireEvent.click(finishButton)
+    // The button is already busy/disabled the instant the first click is
+    // handled — a rapid second click has nothing to act on.
+    fireEvent.click(finishButton)
+    fireEvent.click(finishButton)
+
+    await waitFor(() => expect(submitInterviewAnswer).toHaveBeenCalledOnce())
+  })
+
+  it('7. an interim transcript alone (never finalized) is never submitted', async () => {
+    await renderReadyInterview()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Speak answer' }))
+    const callbacks = fakeStt._callbacks()
+    callbacks.onSpeechDetected()
+    callbacks.onInterim('I would use Red')
+
+    // Nothing has been finalized yet, so there is no committed answer to
+    // submit — the control reflects that rather than acting on interim text.
+    expect(screen.getByLabelText('Your answer').value).toBe('')
+    expect(screen.getByRole('button', { name: 'Finish Answer' })).toHaveProperty('disabled', true)
+    expect(submitInterviewAnswer).not.toHaveBeenCalled()
+  })
+
+  it('10. Replay question still works after a Finish Answer cycle', async () => {
+    await renderReadyInterview()
+    submitInterviewAnswer.mockResolvedValue({
+      status: 'IN_PROGRESS',
+      question: { id: 'q2', sequence: 2, text: 'A follow-up question.', topic: 'llm' },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Speak answer' }))
+    const callbacks = fakeStt._callbacks()
+    callbacks.onFinal('An answer to the first question.')
+    await waitFor(() => expect(screen.getByLabelText('Your answer').value).toBe('An answer to the first question.'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Finish Answer' }))
+    await waitFor(() => expect(screen.getByText('A follow-up question.')).toBeTruthy())
+
+    const speakCallsBeforeReplay = fakeTts.speak.mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: 'Replay question' }))
+    expect(fakeTts.speak.mock.calls.length).toBe(speakCallsBeforeReplay + 1)
+    expect(fakeTts.speak).toHaveBeenLastCalledWith('A follow-up question.', expect.anything())
+  })
 })

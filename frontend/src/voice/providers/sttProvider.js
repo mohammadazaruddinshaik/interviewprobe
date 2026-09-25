@@ -37,8 +37,14 @@
 // @property {(callbacks?: SttStartCallbacks) => void} start - begins a new
 //   listening attempt; a provider must never let a second attempt overlap
 //   a still-active one
-// @property {() => void} stop - the candidate's explicit "I'm done" — ends
-//   capture; a final transcript may still arrive via onFinal afterward
+// @property {() => (Promise<void> | void)} stop - the candidate's explicit
+//   "I'm done" — ends capture immediately (no further audio is captured),
+//   but a provider may take a short, bounded moment afterward to let a
+//   final transcript for audio already captured still arrive via onFinal,
+//   rather than discarding it. May return a promise that resolves once
+//   onStopped has fired, for a caller that needs to know the transcript
+//   has fully settled before acting on it (e.g. before submitting an
+//   answer); a caller that doesn't care may ignore the return value.
 // @property {() => void} dispose - stops and releases any provider
 //   resources; call once when the owning session ends
 

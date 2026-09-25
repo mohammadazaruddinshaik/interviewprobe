@@ -16,6 +16,15 @@ const UTTERANCE_END_MS = 1000
 const MEDIA_RECORDER_TIMESLICE_MS = 250
 const CANDIDATE_MIME_TYPES = ['audio/webm;codecs=opus', 'audio/webm']
 
+// How long stop() waits for Deepgram to gracefully finish after a
+// CloseStream request before giving up and closing the connection itself.
+// Deepgram normally finalizes and closes well within a few hundred ms; this
+// is a generous upper bound so a slow/unresponsive close never makes the
+// candidate wait long for their "Finish Answer" click to take effect. Kept
+// well under useVoiceInterviewSession's own PROCESSING_TIMEOUT_MS (8s),
+// which remains an outer safety net if this somehow never settles.
+const GRACEFUL_STOP_TIMEOUT_MS = 1500
+
 // A compact, interview-relevant technical vocabulary boosted via Deepgram's
 // Keyterm Prompting (nova-3). Deliberately small and generic — never
 // candidate-specific data.
@@ -122,7 +131,7 @@ export function createRemoteSttProvider() {
   // persistent connection instead of one fetch.
   let current = null
 
-  function teardown(entry) {
+  function teardownMedia(entry) {
     if (entry.recorder) {
       entry.recorder.ondataavailable = null
       try {
@@ -132,6 +141,9 @@ export function createRemoteSttProvider() {
       }
     }
     entry.stream?.getTracks().forEach((track) => track.stop())
+  }
+
+  function teardownWs(entry) {
     if (entry.ws) {
       entry.ws.onopen = null
       entry.ws.onmessage = null
@@ -147,21 +159,92 @@ export function createRemoteSttProvider() {
     }
   }
 
-  // Ends whatever attempt is currently active, if any, firing its
-  // onStopped exactly once — never a fabricated final transcript. Used by
-  // both stop() and a superseding start() call, so "something else took
-  // over" looks identical to the caller that got cut off either way.
-  function endCurrent() {
-    if (!current) return
-    const entry = current
-    current = null
-    teardown(entry)
-    entry.callbacks.onStopped?.()
+  function teardown(entry) {
+    teardownMedia(entry)
+    teardownWs(entry)
   }
 
+  // The single place an attempt is ever actually torn down, its onStopped
+  // fired, and any pending stop() promise resolved — guarded by
+  // entry.settled so it can safely run from more than one path (e.g. a
+  // superseding start()/dispose() arriving while a graceful stop() is still
+  // mid-wait) without ever double-firing onStopped, resolving a fabricated
+  // transcript, or leaving an earlier stop() caller awaiting a promise that
+  // would otherwise only resolve when its own now-irrelevant grace timer
+  // eventually elapses.
+  function finalizeStop(entry) {
+    if (entry.settled) return
+    entry.settled = true
+    if (current === entry) current = null
+    if (entry.stopTimeoutId !== undefined) clearTimeout(entry.stopTimeoutId)
+    teardown(entry)
+    entry.callbacks.onStopped?.()
+    entry.resolveStopPromise?.()
+  }
+
+  // Abandons whatever attempt is currently active immediately, with no
+  // grace period — used when a new start() supersedes a still-active one
+  // and by dispose(). The old attempt is being discarded outright (its
+  // transcript no longer matters, e.g. the question changed), so there is
+  // nothing worth waiting for, unlike the explicit stop() below.
+  function endCurrent() {
+    if (!current) return
+    finalizeStop(current)
+  }
+
+  // The candidate's explicit "I'm done" (sttProvider.js's stop() contract:
+  // "a final transcript may still arrive via onFinal afterward"). Recording
+  // stops immediately — no more audio is ever sent — but the connection is
+  // kept open just long enough for Deepgram to finish classifying audio
+  // already sent and deliver a trailing final transcript, by asking it to
+  // close gracefully (Deepgram's documented CloseStream message) instead of
+  // abruptly closing the socket, which would otherwise silently drop
+  // whatever final Deepgram was still about to send. Bounded by
+  // GRACEFUL_STOP_TIMEOUT_MS so this never hangs if Deepgram doesn't
+  // respond. Returns a promise resolving once onStopped has fired, so a
+  // caller that needs to know the transcript has fully settled (e.g. before
+  // submitting an answer) can await it; callers that don't care can ignore
+  // the return value exactly as before.
   function stop() {
-    if (!isSupported) return
-    endCurrent()
+    if (!isSupported || !current) return Promise.resolve()
+    const entry = current
+
+    teardownMedia(entry)
+
+    if (entry.settled) return Promise.resolve()
+    // A stop() is already in flight for this entry (e.g. a duplicate click,
+    // or the PROCESSING-timeout's own retry landing while the first attempt
+    // is still gracefully closing) — share its outcome rather than sending
+    // a second CloseStream and racing a second independent timer against
+    // the first.
+    if (entry.stopPromise) return entry.stopPromise
+
+    if (!entry.ws || entry.ws.readyState !== window.WebSocket.OPEN) {
+      finalizeStop(entry)
+      return Promise.resolve()
+    }
+
+    entry.stopPromise = new Promise((resolve) => {
+      entry.resolveStopPromise = resolve
+      entry.stopTimeoutId = setTimeout(() => finalizeStop(entry), GRACEFUL_STOP_TIMEOUT_MS)
+      // Deepgram finalizes any pending audio and closes the connection
+      // itself in response — that close is what finalizeStop below reacts
+      // to. onmessage is deliberately left untouched here so a trailing
+      // final Results message during this wait still reaches
+      // callbacks.onFinal exactly as it would mid-attempt. Every path here
+      // (a real close, an error, the timeout, or a superseding start()/
+      // dispose() calling finalizeStop directly) converges on the same
+      // finalizeStop, so this promise is guaranteed to resolve exactly
+      // once, promptly, regardless of which one actually happens.
+      entry.ws.onclose = () => finalizeStop(entry)
+      entry.ws.onerror = () => finalizeStop(entry)
+      try {
+        entry.ws.send(JSON.stringify({ type: 'CloseStream' }))
+      } catch {
+        finalizeStop(entry)
+      }
+    })
+    return entry.stopPromise
   }
 
   async function start(callbacks = {}) {
@@ -175,7 +258,7 @@ export function createRemoteSttProvider() {
     }
 
     endCurrent()
-    const entry = { stream: null, recorder: null, ws: null, callbacks }
+    const entry = { stream: null, recorder: null, ws: null, callbacks, settled: false }
     current = entry
 
     // Microphone permission is requested here, and only here — never

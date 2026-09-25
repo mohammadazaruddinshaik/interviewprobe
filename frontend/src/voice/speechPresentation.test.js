@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createSpeechPresentation } from './speechPresentation.js'
+import { buildSpokenQuestion, createSpeechPresentation } from './speechPresentation.js'
 
 describe('createSpeechPresentation — identity / basic input', () => {
   it('returns a plain sentence unchanged', () => {
@@ -133,6 +133,68 @@ describe('createSpeechPresentation — semantic preservation', () => {
     expect(result.text.split(/[.?!]/).filter((s) => s.trim()).length).toBe(
       input.split(/[.?!]/).filter((s) => s.trim()).length,
     )
+  })
+})
+
+describe('buildSpokenQuestion — combining lead-in and question text', () => {
+  const QUESTION = 'How would you handle cache invalidation in a distributed system?'
+
+  it('joins a lead-in and the question with a single space', () => {
+    expect(buildSpokenQuestion("That's interesting. You mentioned cache invalidation.", QUESTION)).toBe(
+      "That's interesting. You mentioned cache invalidation. " + QUESTION,
+    )
+  })
+
+  it('returns the question unchanged when leadIn is null', () => {
+    expect(buildSpokenQuestion(null, QUESTION)).toBe(QUESTION)
+  })
+
+  it('returns the question unchanged when leadIn is undefined', () => {
+    expect(buildSpokenQuestion(undefined, QUESTION)).toBe(QUESTION)
+  })
+
+  it('returns the question unchanged when leadIn is an empty string', () => {
+    expect(buildSpokenQuestion('', QUESTION)).toBe(QUESTION)
+  })
+
+  it('returns the question unchanged when leadIn is whitespace-only', () => {
+    expect(buildSpokenQuestion('   \n\t ', QUESTION)).toBe(QUESTION)
+  })
+
+  it('never produces the literal words "null" or "undefined"', () => {
+    expect(buildSpokenQuestion(null, QUESTION)).not.toMatch(/\b(null|undefined)\b/i)
+    expect(buildSpokenQuestion(undefined, QUESTION)).not.toMatch(/\b(null|undefined)\b/i)
+  })
+
+  it('never leaves double spaces or leading/trailing whitespace', () => {
+    const result = buildSpokenQuestion('  Good point.  ', '  ' + QUESTION + '  ')
+    expect(result).toBe('Good point. ' + QUESTION)
+    expect(result).not.toMatch(/ {2,}/)
+    expect(result).toBe(result.trim())
+  })
+
+  it('trims a whitespace-padded question even with no lead-in', () => {
+    expect(buildSpokenQuestion(null, '  ' + QUESTION + '  ')).toBe(QUESTION)
+  })
+
+  it('returns the trimmed lead-in when the question text is empty', () => {
+    expect(buildSpokenQuestion('Good point.', '')).toBe('Good point.')
+  })
+
+  it('returns an empty string when both are empty', () => {
+    expect(buildSpokenQuestion('', '')).toBe('')
+  })
+
+  it('does not duplicate the lead-in when the question text already starts with it', () => {
+    const leadIn = 'Great, thanks.'
+    const question = 'Great, thanks. Now, how would you scale this service?'
+    expect(buildSpokenQuestion(leadIn, question)).toBe(question)
+  })
+
+  it('the combined text can still be passed through createSpeechPresentation as one string', () => {
+    const combined = buildSpokenQuestion('You mentioned SQL earlier.', 'How would you index a PostgreSQL table?')
+    const presentation = createSpeechPresentation(combined)
+    expect(presentation.text).toBe('You mentioned sequel earlier. How would you index a Postgres sequel table?')
   })
 })
 

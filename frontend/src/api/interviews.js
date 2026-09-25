@@ -27,7 +27,11 @@ export async function getInterview(sessionId) {
 }
 
 // POST /interviews/{id}/start -> DataResponse[StartInterviewResponse]:
-// { session_id, status, question: { id, sequence, text, topic, difficulty, type } }
+// { session_id, status, question: { id, sequence, text, topic, difficulty, type, lead_in } }
+// `lead_in` is a short, optional (string | null) spoken-only conversational
+// reaction the LLM generates alongside the question — never persisted, never
+// a structural decision, and always null for the very first question of an
+// interview (there's no prior answer yet to react to).
 // Only valid while the session is CREATED — the backend returns 409
 // (INVALID_INTERVIEW_STATE) otherwise.
 export async function startInterview(sessionId) {
@@ -36,7 +40,11 @@ export async function startInterview(sessionId) {
 }
 
 // POST /interviews/{id}/answers -> DataResponse[SubmitAnswerResponse]:
-// { session_id, status, action, question: {...} | null, evaluation_status }
+// { session_id, status, action, question: { id, sequence, text, topic, difficulty, type, lead_in } | null, evaluation_status }
+// `question.lead_in` (string | null) is the same ephemeral, optional,
+// spoken-only field as in the /start response above — null when the
+// interview just ended (question is null) or when the LLM had nothing to
+// react to.
 // Requires an `Idempotency-Key` header (1-128 chars) — the backend
 // fingerprints {question_id, answer} against it, so retrying with the same
 // key AND the same answer replays the original result, while reusing the

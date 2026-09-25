@@ -30,7 +30,7 @@ import { ApiError } from '../api/client.js'
 import Interview from './Interview.jsx'
 
 const ANSWER_LABEL = 'Your answer'
-const SUBMIT_LABEL = 'Submit answer'
+const SUBMIT_LABEL = 'Finish Answer'
 
 function deferred() {
   let resolve
@@ -119,8 +119,94 @@ describe('Interview.jsx lifecycle', () => {
 
     await waitFor(() => expect(screen.getByText('Explain RAG.')).toBeTruthy())
     expect(startInterview).toHaveBeenCalledWith('session-1')
-    expect(screen.getByText('Question 1 of 4')).toBeTruthy()
     expect(screen.getByLabelText(ANSWER_LABEL)).toBeTruthy()
+  })
+
+  // -------------------------------------------------------------------
+  // Technical Round header — role only, no internal mechanics
+  // -------------------------------------------------------------------
+
+  it('shows "Technical Round" and the selected role in the header, with no question/topic/difficulty exposed', async () => {
+    getInterview.mockResolvedValue({ status: 'CREATED', role: 'AI_ENGINEER', difficulty: 'MEDIUM', question_limit: 4 })
+    startInterview.mockResolvedValue({
+      status: 'IN_PROGRESS',
+      question: { id: 'q1', sequence: 1, text: 'Explain RAG.', topic: 'RAG' },
+    })
+
+    renderInterview('session-1')
+
+    await waitFor(() => expect(screen.getByText('Explain RAG.')).toBeTruthy())
+    expect(screen.getByText('Technical Round')).toBeTruthy()
+    expect(screen.getByText('AI Engineer')).toBeTruthy()
+    expect(screen.queryByText('Question 1 of 4')).toBeNull()
+    expect(screen.queryByText(/Question \d+ of \d+/)).toBeNull()
+    expect(screen.queryByText('MEDIUM')).toBeNull()
+    expect(screen.queryByText('Medium')).toBeNull()
+    expect(screen.queryByText('RAG')).toBeNull()
+    for (const action of ['FOLLOW_UP', 'NEW_AREA', 'DEEP_DIVE', 'CLARIFICATION', 'CHALLENGE', 'TOPIC_TRANSITION']) {
+      expect(screen.queryByText(action)).toBeNull()
+    }
+  })
+
+  it('displays a different selected role dynamically, from the actual session data', async () => {
+    getInterview.mockResolvedValue({
+      status: 'CREATED',
+      role: 'FULL_STACK_DEVELOPER',
+      difficulty: 'MEDIUM',
+      question_limit: 4,
+    })
+    startInterview.mockResolvedValue({
+      status: 'IN_PROGRESS',
+      question: { id: 'q1', sequence: 1, text: 'Explain closures.', topic: 'JAVASCRIPT' },
+    })
+
+    renderInterview('session-1')
+
+    await waitFor(() => expect(screen.getByText('Explain closures.')).toBeTruthy())
+    expect(screen.getByText('Full Stack Developer')).toBeTruthy()
+    expect(screen.queryByText('AI Engineer')).toBeNull()
+  })
+
+  it('passes question.lead_in through to the voice session and renders it alongside the question', async () => {
+    getInterview.mockResolvedValue({ status: 'CREATED', role: 'AI_ENGINEER', difficulty: 'MEDIUM', question_limit: 4 })
+    startInterview.mockResolvedValue({
+      status: 'IN_PROGRESS',
+      question: {
+        id: 'q1',
+        sequence: 1,
+        text: 'How would you handle cache invalidation in a distributed system?',
+        topic: 'RAG',
+        lead_in: "That's interesting. You mentioned cache invalidation.",
+      },
+    })
+
+    renderInterview('session-1')
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("That's interesting. You mentioned cache invalidation.", { exact: false }),
+      ).toBeTruthy(),
+    )
+    expect(
+      screen.getByText('How would you handle cache invalidation in a distributed system?'),
+    ).toBeTruthy()
+    expect(useVoiceInterviewSession).toHaveBeenCalledWith(
+      expect.objectContaining({ questionLeadIn: "That's interesting. You mentioned cache invalidation." }),
+    )
+  })
+
+  it('passes a null questionLeadIn through when the question has no lead_in', async () => {
+    getInterview.mockResolvedValue({ status: 'CREATED', role: 'AI_ENGINEER', difficulty: 'MEDIUM', question_limit: 4 })
+    startInterview.mockResolvedValue({
+      status: 'IN_PROGRESS',
+      question: { id: 'q1', sequence: 1, text: 'Explain RAG.', topic: 'RAG', lead_in: null },
+    })
+
+    renderInterview('session-1')
+
+    await waitFor(() => expect(screen.getByText('Explain RAG.')).toBeTruthy())
+    expect(useVoiceInterviewSession).toHaveBeenCalledWith(expect.objectContaining({ questionLeadIn: null }))
+    expect(screen.queryByText(/null/i)).toBeNull()
   })
 
   // -------------------------------------------------------------------
@@ -140,7 +226,8 @@ describe('Interview.jsx lifecycle', () => {
     renderInterview()
 
     await waitFor(() => expect(screen.getByText('Design a rate limiter.')).toBeTruthy())
-    expect(screen.getByText('Question 3 of 5')).toBeTruthy()
+    expect(screen.getByText('Backend Developer')).toBeTruthy()
+    expect(screen.queryByText('Question 3 of 5')).toBeNull()
     expect(startInterview).not.toHaveBeenCalled()
   })
 

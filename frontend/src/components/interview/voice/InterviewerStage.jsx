@@ -10,6 +10,7 @@ function InterviewerStage({
   interviewer,
   isSpeaking,
   questionText,
+  leadIn,
   status,
   interimTranscript,
   answer,
@@ -31,6 +32,7 @@ function InterviewerStage({
       <InterviewSubtitles
         interviewerName={interviewer.name}
         questionText={questionText}
+        leadIn={leadIn}
         isInterviewerActive={isSpeaking}
         status={status}
         interimTranscript={interimTranscript}

@@ -47,16 +47,73 @@ describe('state transitions', () => {
     expect(speaking.status).toBe(VOICE_STATUS.CANDIDATE_SPEAKING)
   })
 
-  it('5. CANDIDATE_SPEAKING -> PROCESSING on STT_SPEECH_ENDED', () => {
+  it('5. CANDIDATE_SPEAKING -> CANDIDATE_LISTENING on STT_SPEECH_ENDED (a pause, not "done")', () => {
+    // Deepgram's UtteranceEnd fires after every ~1s of silence — it means
+    // "the current speech segment finalized," never "the candidate is
+    // done." Only an explicit FINISH_REQUESTED (Finish Answer) is allowed
+    // to enter PROCESSING — see the "5b" test below.
     let state = createInitialVoiceState()
     state = voiceReducer(state, { type: VOICE_ACTION.LISTEN_REQUESTED, auto: false, attemptId: 1 })
     state = voiceReducer(state, { type: VOICE_ACTION.STT_SPEECH_DETECTED, attemptId: 1 })
     expect(state.status).toBe(VOICE_STATUS.CANDIDATE_SPEAKING)
 
-    const processing = voiceReducer(state, { type: VOICE_ACTION.STT_SPEECH_ENDED, attemptId: 1 })
+    const paused = voiceReducer(state, { type: VOICE_ACTION.STT_SPEECH_ENDED, attemptId: 1 })
+
+    expect(paused.status).toBe(VOICE_STATUS.CANDIDATE_LISTENING)
+    expect(getActiveChannel(paused)).toBe('mic') // still open — the candidate can keep talking
+  })
+
+  it('5a. STT_SPEECH_ENDED while already CANDIDATE_LISTENING is a no-op', () => {
+    let state = createInitialVoiceState()
+    state = voiceReducer(state, { type: VOICE_ACTION.LISTEN_REQUESTED, auto: false, attemptId: 1 })
+    expect(state.status).toBe(VOICE_STATUS.CANDIDATE_LISTENING)
+
+    const afterSpeechEnded = voiceReducer(state, { type: VOICE_ACTION.STT_SPEECH_ENDED, attemptId: 1 })
+
+    expect(afterSpeechEnded).toBe(state)
+  })
+
+  it('5b. CANDIDATE_LISTENING/CANDIDATE_SPEAKING -> PROCESSING only on the explicit FINISH_REQUESTED', () => {
+    let state = createInitialVoiceState()
+    state = voiceReducer(state, { type: VOICE_ACTION.LISTEN_REQUESTED, auto: false, attemptId: 1 })
+    state = voiceReducer(state, { type: VOICE_ACTION.STT_SPEECH_DETECTED, attemptId: 1 })
+    expect(state.status).toBe(VOICE_STATUS.CANDIDATE_SPEAKING)
+
+    const processing = voiceReducer(state, { type: VOICE_ACTION.FINISH_REQUESTED, attemptId: 1 })
 
     expect(processing.status).toBe(VOICE_STATUS.PROCESSING)
     expect(getActiveChannel(processing)).toBe('mic') // still locked while finalizing
+    expect(processing.sttAttemptId).toBe(1) // winds down the same attempt, never starts a new one
+  })
+
+  it('5c. the candidate can resume speaking after a pause — STT_SPEECH_DETECTED after STT_SPEECH_ENDED still registers', () => {
+    let state = createInitialVoiceState()
+    state = voiceReducer(state, { type: VOICE_ACTION.LISTEN_REQUESTED, auto: false, attemptId: 1 })
+    state = voiceReducer(state, { type: VOICE_ACTION.STT_SPEECH_DETECTED, attemptId: 1 })
+    state = voiceReducer(state, { type: VOICE_ACTION.STT_SPEECH_ENDED, attemptId: 1 })
+    expect(state.status).toBe(VOICE_STATUS.CANDIDATE_LISTENING)
+
+    const resumed = voiceReducer(state, { type: VOICE_ACTION.STT_SPEECH_DETECTED, attemptId: 1 })
+
+    expect(resumed.status).toBe(VOICE_STATUS.CANDIDATE_SPEAKING)
+  })
+
+  it('5d. FINISH_REQUESTED from a non-busy state (e.g. IDLE) is a no-op', () => {
+    const idle = createInitialVoiceState()
+
+    const afterFinish = voiceReducer(idle, { type: VOICE_ACTION.FINISH_REQUESTED, attemptId: 0 })
+
+    expect(afterFinish).toBe(idle)
+  })
+
+  it('5e. a stale FINISH_REQUESTED (wrong attemptId) never moves a newer attempt into PROCESSING', () => {
+    let state = createInitialVoiceState()
+    state = voiceReducer(state, { type: VOICE_ACTION.LISTEN_REQUESTED, auto: false, attemptId: 2 })
+    expect(state.status).toBe(VOICE_STATUS.CANDIDATE_LISTENING)
+
+    const afterStaleFinish = voiceReducer(state, { type: VOICE_ACTION.FINISH_REQUESTED, attemptId: 1 })
+
+    expect(afterStaleFinish).toBe(state)
   })
 
   it('5b. STT_FINAL stays in CANDIDATE_LISTENING (mic still locked) rather than resting — a continuous-listening provider may still be capturing more speech', () => {

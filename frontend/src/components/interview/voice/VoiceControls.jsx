@@ -86,7 +86,7 @@ function VoiceControls({
         )}
 
         <Button onClick={onSubmit} disabled={!canSubmit} aria-busy={submitting} variant="primary" withArrow={!submitting}>
-          {submitting ? 'Evaluating your answer…' : 'Submit answer'}
+          {submitting ? 'Evaluating your answer…' : 'Finish Answer'}
         </Button>
       </div>
     </div>

@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 //
-// Task 55 — focused coverage for InterviewNew.jsx: role/difficulty/topic
-// selection, the question-count stepper, required-configuration
-// validation, successful creation + navigation, and API failure/loading
-// behavior. Mocks the API boundary (../api/interviews.js) and react-router's
+// Focused coverage for InterviewNew.jsx as a Technical Round setup: the
+// candidate chooses ONLY a role. Difficulty, topics, question count, and
+// voice/text mode are no longer candidate-facing controls — the Technical
+// Round derives them internally (see interviewCatalog.js's
+// DEFAULT_DIFFICULTY/DEFAULT_QUESTION_COUNT/getDefaultTopicsForRole).
+// Mocks the API boundary (../api/interviews.js) and react-router's
 // useNavigate, same mocking approach as the existing Interview.jsx tests.
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
@@ -21,9 +23,10 @@ vi.mock('react-router-dom', async (importOriginal) => {
 
 import { createInterview } from '../api/interviews.js'
 import { ApiError } from '../api/client.js'
+import { DEFAULT_DIFFICULTY, DEFAULT_QUESTION_COUNT, ROLES } from '../data/interviewCatalog.js'
 import InterviewNew from './InterviewNew.jsx'
 
-const START_LABEL = 'Start interview'
+const START_LABEL = 'Start Technical Round'
 
 function deferred() {
   let resolve
@@ -43,7 +46,7 @@ function renderInterviewNew() {
   )
 }
 
-describe('InterviewNew.jsx', () => {
+describe('InterviewNew.jsx — Technical Round setup', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
@@ -53,148 +56,113 @@ describe('InterviewNew.jsx', () => {
   })
 
   // -------------------------------------------------------------------
-  // Defaults + required-configuration validation
+  // Role-only setup surface
   // -------------------------------------------------------------------
 
-  it('defaults to the first role, MEDIUM difficulty, no topics selected, and a disabled submit', () => {
+  it('1. shows a role selector, defaulting to the first role, with a ready-to-click submit', () => {
     renderInterviewNew()
 
+    expect(screen.getByText('Select your role')).toBeTruthy()
     expect(screen.getByRole('button', { name: /AI Engineer/ })).toHaveProperty('ariaPressed', 'true')
-    expect(screen.getByRole('button', { name: 'Medium' })).toHaveProperty('ariaPressed', 'true')
-    expect(screen.getByText('0 of 6 selected')).toBeTruthy()
-    expect(screen.getByRole('button', { name: START_LABEL })).toHaveProperty('disabled', true)
-    expect(screen.getByText('You must select at least one topic to start.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: START_LABEL })).toHaveProperty('disabled', false)
   })
 
-  it('does not call createInterview when the submit button is disabled (no topics selected)', () => {
+  it('2. renders no difficulty selection control', () => {
     renderInterviewNew()
 
-    fireEvent.click(screen.getByRole('button', { name: START_LABEL }))
+    expect(screen.queryByText('Select difficulty')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Easy' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Medium' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Hard' })).toBeNull()
+  })
 
-    expect(createInterview).not.toHaveBeenCalled()
+  it('3. renders no topic selection control', () => {
+    renderInterviewNew()
+
+    expect(screen.queryByText('Select topics')).toBeNull()
+    expect(screen.queryByText(/of \d+ selected/)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'RAG' })).toBeNull()
+  })
+
+  it('4. renders no question-count selection control', () => {
+    renderInterviewNew()
+
+    expect(screen.queryByText('Number of questions')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Increase number of questions' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Decrease number of questions' })).toBeNull()
+  })
+
+  it('5. renders no voice/text mode selection control', () => {
+    renderInterviewNew()
+
+    expect(screen.queryByText(/voice/i)).toBeNull()
+    expect(screen.queryByText(/text mode/i)).toBeNull()
   })
 
   // -------------------------------------------------------------------
   // Role selection
   // -------------------------------------------------------------------
 
-  it('switches the topic catalog and resets selected topics when the role changes', () => {
+  it('switches the selected role without exposing any topic/difficulty control', () => {
     renderInterviewNew()
-
-    fireEvent.click(screen.getByRole('button', { name: 'RAG' }))
-    expect(screen.getByText('1 of 6 selected')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: /Frontend Developer/ }))
 
     expect(screen.getByRole('button', { name: /Frontend Developer/ })).toHaveProperty('ariaPressed', 'true')
     expect(screen.getByRole('button', { name: /AI Engineer/ })).toHaveProperty('ariaPressed', 'false')
-    // AI_ENGINEER's topics are gone, Frontend Developer's are shown instead.
-    expect(screen.queryByRole('button', { name: 'RAG' })).toBeNull()
-    expect(screen.getByRole('button', { name: 'React' })).toBeTruthy()
-    // Selection was cleared by the role change.
-    expect(screen.getByText('0 of 6 selected')).toBeTruthy()
-    expect(screen.getByRole('button', { name: START_LABEL })).toHaveProperty('disabled', true)
-  })
-
-  // -------------------------------------------------------------------
-  // Difficulty selection
-  // -------------------------------------------------------------------
-
-  it('selects a difficulty and deselects the previous one', () => {
-    renderInterviewNew()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Hard' }))
-
-    expect(screen.getByRole('button', { name: 'Hard' })).toHaveProperty('ariaPressed', 'true')
-    expect(screen.getByRole('button', { name: 'Medium' })).toHaveProperty('ariaPressed', 'false')
-  })
-
-  // -------------------------------------------------------------------
-  // Topic selection
-  // -------------------------------------------------------------------
-
-  it('toggles a topic on and back off, and enables/disables submit accordingly', () => {
-    renderInterviewNew()
-    const ragButton = screen.getByRole('button', { name: 'RAG' })
-
-    fireEvent.click(ragButton)
-    expect(ragButton).toHaveProperty('ariaPressed', 'true')
     expect(screen.getByRole('button', { name: START_LABEL })).toHaveProperty('disabled', false)
-
-    fireEvent.click(ragButton)
-    expect(ragButton).toHaveProperty('ariaPressed', 'false')
-    expect(screen.getByRole('button', { name: START_LABEL })).toHaveProperty('disabled', true)
-  })
-
-  it('allows selecting multiple topics and reflects the running count', () => {
-    renderInterviewNew()
-
-    fireEvent.click(screen.getByRole('button', { name: 'RAG' }))
-    fireEvent.click(screen.getByRole('button', { name: 'AI Agents' }))
-
-    expect(screen.getByText('2 of 6 selected')).toBeTruthy()
   })
 
   // -------------------------------------------------------------------
-  // Question-count stepper
+  // 8. The new roles appear in the role selector; 9. no invalid/duplicate ids
   // -------------------------------------------------------------------
 
-  function questionCountValue() {
-    // Scoped to the counter's own element: the "Select topics" section
-    // heading also renders a bare "3" step-index badge, which would
-    // otherwise collide with MIN_QUESTIONS via a plain text query.
-    return screen.getByText(/^\d+$/, { selector: 'span[aria-live="polite"]' })
-  }
-
-  it('increments and decrements the question count within its bounds', () => {
+  it('8. lists every Technical Round role, including the newly added ones', () => {
     renderInterviewNew()
-    const increase = screen.getByRole('button', { name: 'Increase number of questions' })
-    const decrease = screen.getByRole('button', { name: 'Decrease number of questions' })
 
-    expect(questionCountValue()).toHaveProperty('textContent', '6') // DEFAULT_QUESTION_COUNT
-
-    fireEvent.click(increase)
-    expect(questionCountValue()).toHaveProperty('textContent', '7')
-
-    fireEvent.click(decrease)
-    fireEvent.click(decrease)
-    expect(questionCountValue()).toHaveProperty('textContent', '5')
+    for (const role of ROLES) {
+      expect(screen.getByRole('button', { name: new RegExp(role.label) })).toBeTruthy()
+    }
+    expect(screen.getByRole('button', { name: /Software Development Engineer/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /SDE Intern/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Full Stack Developer/ })).toBeTruthy()
   })
 
-  it('disables the decrease button at the minimum and the increase button at the maximum', () => {
-    renderInterviewNew()
-    const increase = screen.getByRole('button', { name: 'Increase number of questions' })
-    const decrease = screen.getByRole('button', { name: 'Decrease number of questions' })
-
-    for (let i = 0; i < 10; i += 1) fireEvent.click(decrease)
-    expect(questionCountValue()).toHaveProperty('textContent', '3') // MIN_QUESTIONS
-    expect(decrease).toHaveProperty('disabled', true)
-
-    for (let i = 0; i < 10; i += 1) fireEvent.click(increase)
-    expect(questionCountValue()).toHaveProperty('textContent', '10') // MAX_QUESTIONS
-    expect(increase).toHaveProperty('disabled', true)
+  it('9. the role catalog contains no duplicate or empty role ids', () => {
+    const ids = ROLES.map((role) => role.id)
+    expect(ids.every((id) => typeof id === 'string' && id.length > 0)).toBe(true)
+    expect(new Set(ids).size).toBe(ids.length)
   })
 
   // -------------------------------------------------------------------
-  // Successful creation + navigation
+  // 6. Starting the interview sends the selected role correctly
   // -------------------------------------------------------------------
 
-  it('creates the interview with the selected configuration and navigates to it', async () => {
+  it('6. creates the interview with the selected role and the Technical Round’s internal defaults', async () => {
     renderInterviewNew()
-    fireEvent.click(screen.getByRole('button', { name: 'RAG' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Hard' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Increase number of questions' }))
+    fireEvent.click(screen.getByRole('button', { name: /Full Stack Developer/ }))
     createInterview.mockResolvedValue({ id: 'new-session-42' })
 
     fireEvent.click(screen.getByRole('button', { name: START_LABEL }))
 
     await vi.waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/interview/new-session-42'))
+    const fullStackRole = ROLES.find((role) => role.id === 'FULL_STACK_DEVELOPER')
     expect(createInterview).toHaveBeenCalledWith({
-      role: 'AI_ENGINEER',
-      difficulty: 'HARD',
-      topics: ['RAG'],
-      questionLimit: 7,
+      role: 'FULL_STACK_DEVELOPER',
+      difficulty: DEFAULT_DIFFICULTY,
+      topics: fullStackRole.topics.map((topic) => topic.id),
+      questionLimit: DEFAULT_QUESTION_COUNT,
     })
+  })
+
+  it('starting without changing the role sends the default (first) role', async () => {
+    renderInterviewNew()
+    createInterview.mockResolvedValue({ id: 'session-default-role' })
+
+    fireEvent.click(screen.getByRole('button', { name: START_LABEL }))
+
+    await vi.waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/interview/session-default-role'))
+    expect(createInterview).toHaveBeenCalledWith(expect.objectContaining({ role: ROLES[0].id }))
   })
 
   // -------------------------------------------------------------------
@@ -203,13 +171,12 @@ describe('InterviewNew.jsx', () => {
 
   it('shows the busy submit state while creation is in flight', async () => {
     renderInterviewNew()
-    fireEvent.click(screen.getByRole('button', { name: 'RAG' }))
     const { promise, resolve } = deferred()
     createInterview.mockReturnValue(promise)
 
     fireEvent.click(screen.getByRole('button', { name: START_LABEL }))
 
-    const busyButton = await screen.findByRole('button', { name: 'Starting interview…' })
+    const busyButton = await screen.findByRole('button', { name: 'Starting your Technical Round…' })
     expect(busyButton).toHaveProperty('disabled', true)
 
     resolve({ id: 'session-x' })
@@ -217,12 +184,11 @@ describe('InterviewNew.jsx', () => {
   })
 
   // -------------------------------------------------------------------
-  // API failure / error display
+  // 7. Existing error handling still works
   // -------------------------------------------------------------------
 
-  it('shows the API error message on creation failure and re-enables the form', async () => {
+  it('7. shows the API error message on creation failure and re-enables the form', async () => {
     renderInterviewNew()
-    fireEvent.click(screen.getByRole('button', { name: 'RAG' }))
     createInterview.mockRejectedValueOnce(new ApiError('Too many interview creation requests. Please try again later.', { status: 429 }))
 
     fireEvent.click(screen.getByRole('button', { name: START_LABEL }))
@@ -237,9 +203,8 @@ describe('InterviewNew.jsx', () => {
     expect(mockNavigate).not.toHaveBeenCalled()
   })
 
-  it('falls back to a generic message for a non-ApiError creation failure', async () => {
+  it('7. falls back to a generic message for a non-ApiError creation failure', async () => {
     renderInterviewNew()
-    fireEvent.click(screen.getByRole('button', { name: 'RAG' }))
     createInterview.mockRejectedValueOnce(new Error('network down'))
 
     fireEvent.click(screen.getByRole('button', { name: START_LABEL }))

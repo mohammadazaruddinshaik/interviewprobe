@@ -6,8 +6,9 @@ import InterviewComplete from '../components/interview/InterviewComplete.jsx'
 import InterviewError from '../components/interview/InterviewError.jsx'
 import InterviewLoading from '../components/interview/InterviewLoading.jsx'
 import VoiceInterviewView from '../components/interview/voice/VoiceInterviewView.jsx'
-import { DIFFICULTY_LABELS, ROLE_LABELS, TOPIC_LABELS } from '../data/interviewCatalog.js'
+import { ROLE_LABELS } from '../data/interviewCatalog.js'
 import { useVoiceInterviewSession } from '../voice/useVoiceInterviewSession.js'
+import { VOICE_STATUS } from '../voice/voiceState.js'
 
 const GENERIC_LOAD_ERROR = 'Something went wrong while loading your interview.'
 const GENERIC_SUBMIT_ERROR = 'Something went wrong while submitting your answer.'
@@ -24,6 +25,14 @@ function Interview() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState(null)
   const [retryCount, setRetryCount] = useState(0)
+  // null | 'stt' | 'ready' — set the moment Finish Answer is clicked with
+  // the mic still active, tracking the two-stage wait described on the
+  // effect below: 'stt' until voice.commands.finishListening() has left
+  // PROCESSING, then one extra render as 'ready' before actually
+  // submitting. Distinct from isSubmitting, which covers the whole
+  // finish-then-submit window (both this wait and the actual API call) for
+  // the button's busy state.
+  const [awaitingFinish, setAwaitingFinish] = useState(null)
 
   // Tracks the idempotency key for the *current* answer attempt: reused
   // across retries of the same unsubmitted answer text, replaced with a
@@ -49,6 +58,7 @@ function Interview() {
   const voice = useVoiceInterviewSession({
     questionId: question?.id,
     questionText: question?.text,
+    questionLeadIn: question?.lead_in,
     active: phase === 'ready',
     onTranscript: handleVoiceTranscript,
   })
@@ -119,15 +129,26 @@ function Interview() {
     }
   }, [phase, question])
 
-  async function handleSubmit() {
+  // The one and only place that actually calls the submit API — reached
+  // either directly (mic wasn't active) or after finishListening() has
+  // settled (mic was active). isSubmitting is already true by the time this
+  // runs either way, so it is deliberately NOT part of this function's own
+  // guard — see handleFinishAnswer, the single gatekeeper for starting a
+  // finish/submit cycle at all.
+  async function submitAnswer() {
     const trimmedAnswer = answer.trim()
-    if (!trimmedAnswer || isSubmitting || !question) return
+    if (!trimmedAnswer || !question) {
+      // Nothing meaningful was captured (e.g. the candidate finished
+      // listening without ever having spoken/typed anything) — never
+      // submit an empty or stale answer.
+      setIsSubmitting(false)
+      return
+    }
 
     if (idempotencyRef.current.key === null || idempotencyRef.current.answer !== trimmedAnswer) {
       idempotencyRef.current = { key: crypto.randomUUID(), answer: trimmedAnswer }
     }
 
-    setIsSubmitting(true)
     setSubmitError(null)
     try {
       const result = await submitInterviewAnswer(sessionId, {
@@ -152,6 +173,59 @@ function Interview() {
       setIsSubmitting(false)
     }
   }
+
+  // The candidate's explicit "I'm done" — the only entry point into a
+  // finish/submit cycle (never a pause, never a Deepgram UtteranceEnd; see
+  // voiceReducer.js's FINISH_REQUESTED). If the mic is currently listening,
+  // it must be cleanly wound down first — including a trailing final
+  // transcript for whatever was just said — before submitAnswer() reads
+  // `answer`, so a final transcript that was still finalizing at the exact
+  // moment of the click is never lost or raced. If the mic isn't active
+  // (typed answer, or already stopped), there's nothing to wait for and
+  // this proceeds straight to submitting, exactly as before.
+  function handleFinishAnswer() {
+    if (isSubmitting || !answer.trim() || !question) return
+    setIsSubmitting(true)
+    setSubmitError(null)
+
+    const micActive =
+      voice.state.status === VOICE_STATUS.CANDIDATE_LISTENING || voice.state.status === VOICE_STATUS.CANDIDATE_SPEAKING
+    if (!micActive) {
+      submitAnswer()
+      return
+    }
+    setAwaitingFinish('stt')
+    voice.commands.finishListening()
+  }
+
+  // Two stages, not one, deliberately: a trailing final transcript's own
+  // delivery (useVoiceInterviewSession's delivery effect -> setAnswer) can
+  // land in the very same React commit as the PROCESSING -> IDLE transition
+  // this effect watches for (e.g. a provider whose stop() resolves
+  // "instantly enough" that Deepgram's trailing final and its onStopped
+  // both fire within one batch). If that happens, `answer` in THIS
+  // render's closure is still the pre-delivery value — setAnswer only
+  // schedules a future render, it doesn't retroactively update a closure
+  // already captured this render. Moving to 'ready' (rather than
+  // submitting immediately) forces one more render to happen first; by the
+  // time that one runs, any same-commit setAnswer has already been applied,
+  // so 'ready''s branch is guaranteed to see the fully-settled answer.
+  useEffect(() => {
+    if (awaitingFinish === 'stt') {
+      if (voice.state.status === VOICE_STATUS.PROCESSING) return
+      setAwaitingFinish('ready')
+      return
+    }
+    if (awaitingFinish === 'ready') {
+      setAwaitingFinish(null)
+      submitAnswer()
+    }
+    // submitAnswer/answer/question/sessionId intentionally omitted: this
+    // effect must fire exactly once per finish request, driven solely by
+    // awaitingFinish/voice.state.status, and always reads the latest
+    // `answer` via the closure created on the render where 'ready' fires.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [awaitingFinish, voice.state.status])
 
   function handleRetryLoad() {
     setRetryCount((count) => count + 1)
@@ -195,20 +269,17 @@ function Interview() {
 
   // Voice is the interview — the room is the only interview workspace, not
   // one of two presentations. It reads the exact same
-  // `question`/`answer`/`handleSubmit`/`voice` state this page has always
-  // owned; only the rendering is voice-first now.
+  // `question`/`answer`/`handleFinishAnswer`/`voice` state this page has
+  // always owned; only the rendering is voice-first now.
   return (
     <div className="min-h-screen bg-cream">
       <VoiceInterviewView
         voice={voice}
         question={question}
-        questionLimit={sessionMeta?.questionLimit}
         roleLabel={ROLE_LABELS[sessionMeta?.role] ?? sessionMeta?.role}
-        difficultyLabel={DIFFICULTY_LABELS[sessionMeta?.difficulty] ?? sessionMeta?.difficulty}
-        topicLabel={TOPIC_LABELS[question?.topic] ?? question?.topic}
         answer={answer}
         onAnswerChange={setAnswer}
-        onSubmit={handleSubmit}
+        onSubmit={handleFinishAnswer}
         submitting={isSubmitting}
         headingRef={questionHeadingRef}
       />

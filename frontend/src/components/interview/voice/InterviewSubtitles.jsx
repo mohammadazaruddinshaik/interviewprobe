@@ -13,6 +13,7 @@ const CANDIDATE_ACTIVE_STATUSES = [VOICE_STATUS.CANDIDATE_LISTENING, VOICE_STATU
 function InterviewSubtitles({
   interviewerName,
   questionText,
+  leadIn,
   isInterviewerActive,
   status,
   interimTranscript,
@@ -54,6 +55,12 @@ function InterviewSubtitles({
         >
           {interviewerName}
         </p>
+        {/* The interviewer's short conversational reaction to the previous
+            answer — spoken as part of the same TTS turn as the question
+            (see useVoiceInterviewSession's buildSpokenQuestion), and shown
+            here visually secondary to it: smaller, lighter, and above the
+            actual question heading rather than merged into it. */}
+        {leadIn && leadIn.trim() && <p className="mt-1 text-sm text-muted">{leadIn}</p>}
         {/* The actual question text, verbatim — never paraphrased here. */}
         <h2
           ref={headingRef}

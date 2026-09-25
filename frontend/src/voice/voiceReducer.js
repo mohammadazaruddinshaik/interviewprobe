@@ -15,6 +15,7 @@ export const VOICE_ACTION = {
   STT_FINAL: 'STT_FINAL',
   STT_STOPPED: 'STT_STOPPED',
   STT_ERROR: 'STT_ERROR',
+  FINISH_REQUESTED: 'FINISH_REQUESTED',
   CLEAR_ERROR: 'CLEAR_ERROR',
   SETTLE: 'SETTLE',
 }
@@ -116,11 +117,33 @@ export function voiceReducer(state, action) {
     }
 
     case VOICE_ACTION.STT_SPEECH_ENDED: {
+      // Deepgram's UtteranceEnd fires after every ~1s pause in speech — it
+      // means "the current speech segment just finalized," never "the
+      // candidate is done with their whole answer." Only an explicit
+      // FINISH_REQUESTED (the candidate clicking Finish Answer) is allowed
+      // to enter PROCESSING. This keeps the mic open and usable, so a
+      // candidate who pauses mid-thought ("I'd use Redis for caching
+      // because... [pause] ...and I'd invalidate it when...") can simply
+      // keep talking — nothing here stops capture, disables the mic, or
+      // risks the PROCESSING-timeout's stalled-connection recovery
+      // eventually tearing down a mic that was never actually stuck.
+      if (!isCurrentSttAttempt(state, action)) return state
+      if (state.status !== VOICE_STATUS.CANDIDATE_SPEAKING) return state
+      return { ...state, status: VOICE_STATUS.CANDIDATE_LISTENING }
+    }
+
+    // The candidate's explicit "I'm done" (the Finish Answer control) —
+    // the ONLY thing allowed to move a busy mic into PROCESSING. Reuses
+    // the current sttAttemptId (this doesn't start a new listening
+    // attempt, it's winding the current one down) so the existing
+    // STT_FINAL/STT_STOPPED cases and the PROCESSING-timeout safety net
+    // apply unchanged to however this settles.
+    case VOICE_ACTION.FINISH_REQUESTED: {
       if (!isCurrentSttAttempt(state, action)) return state
       if (state.status !== VOICE_STATUS.CANDIDATE_LISTENING && state.status !== VOICE_STATUS.CANDIDATE_SPEAKING) {
         return state
       }
-      return { ...state, status: VOICE_STATUS.PROCESSING }
+      return { ...state, status: VOICE_STATUS.PROCESSING, interimTranscript: '' }
     }
 
     case VOICE_ACTION.STT_FINAL: {
