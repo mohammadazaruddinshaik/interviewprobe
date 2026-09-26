@@ -1,48 +1,24 @@
-import { CoffeeIcon, LayoutIcon, ServerIcon, SparkIcon } from '../ui/icons.jsx'
+import { ROLES } from '../../data/interviewCatalog.js'
+import SectionHeading from '../ui/SectionHeading.jsx'
+import RoleCard from './RoleCard.jsx'
 
-const ROLES = [
-  {
-    icon: SparkIcon,
-    title: 'AI Engineer',
-    description: 'LLMs, RAG, agents and evaluation.',
-  },
-  {
-    icon: ServerIcon,
-    title: 'Backend Developer',
-    description: 'APIs, databases and system design.',
-  },
-  {
-    icon: LayoutIcon,
-    title: 'Frontend Developer',
-    description: 'JavaScript, React and modern CSS.',
-  },
-  {
-    icon: CoffeeIcon,
-    title: 'Java Developer',
-    description: 'Core Java, OOP and the JVM ecosystem.',
-  },
-]
-
+// Renders every role the backend actually supports (src/data/
+// interviewCatalog.js, kept in sync with backend/app/domain/enums.py) —
+// never a hardcoded subset that can drift as roles are added.
 function Roles() {
   return (
-    <section id="roles" className="border-t border-line/70">
-      <div className="mx-auto max-w-7xl px-6 py-24">
-        <h2 className="max-w-lg text-4xl font-semibold leading-tight tracking-tight text-ink sm:text-5xl">
-          Practice for the role you&apos;re chasing.
-        </h2>
+    <section id="roles" className="scroll-mt-28 px-6 py-20">
+      <div className="mx-auto max-w-7xl">
+        <SectionHeading
+          align="center"
+          eyebrow="Role Coverage"
+          title="Practice for the role you're chasing."
+          className="mb-14"
+        />
 
-        <div className="mt-14 grid grid-cols-1 gap-5 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {ROLES.map((role) => (
-            <div
-              key={role.title}
-              className="group rounded-2xl border border-transparent p-6 transition-all duration-200 hover:-translate-y-0.5 hover:border-line hover:bg-white hover:shadow-sm"
-            >
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-soft text-accent transition-transform duration-200 group-hover:scale-105">
-                <role.icon className="h-5 w-5" />
-              </span>
-              <h3 className="mt-4 text-base font-semibold text-ink">{role.title}</h3>
-              <p className="mt-1.5 text-sm leading-relaxed text-muted">{role.description}</p>
-            </div>
+            <RoleCard key={role.id} icon={role.icon} title={role.label} description={role.description} />
           ))}
         </div>
       </div>

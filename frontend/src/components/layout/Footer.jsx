@@ -1,8 +1,8 @@
 import { BrandMark } from '../ui/icons.jsx'
 
 const PRODUCT_LINKS = [
-  { label: 'Product', href: '#product' },
-  { label: 'How it works', href: '#how-it-works' },
+  { label: 'Features', href: '#features' },
+  { label: 'How It Works', href: '#how-it-works' },
   { label: 'Roles', href: '#roles' },
 ]
 
@@ -15,11 +15,11 @@ function Footer() {
   const year = new Date().getFullYear()
 
   return (
-    <footer className="border-t border-line/70 bg-cream">
-      <div className="mx-auto max-w-7xl px-6 py-14">
+    <footer className="px-4 pb-6 sm:px-6">
+      <div className="mx-auto max-w-6xl rounded-[28px] border border-white/70 bg-white/60 px-6 py-12 shadow-glass-sm backdrop-blur-xl sm:px-10">
         <div className="grid gap-10 sm:grid-cols-3">
           <div className="flex items-center gap-2 text-ink">
-            <BrandMark className="h-5 w-5 text-accent" />
+            <BrandMark className="h-5 w-5 text-primary" />
             <span className="text-sm font-semibold tracking-tight">InterviewProbe</span>
           </div>
 

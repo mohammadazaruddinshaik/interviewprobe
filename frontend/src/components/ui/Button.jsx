@@ -2,12 +2,18 @@ import { Link } from 'react-router-dom'
 import { ArrowRightIcon } from './icons.jsx'
 
 const VARIANT_CLASSES = {
+  // The one solid, colored action per view — primary blue/indigo, soft
+  // glow shadow, never the harsh flat "dark" button the old ink-on-cream
+  // palette used.
   primary:
-    'bg-ink text-cream hover:bg-ink/90 focus-visible:outline-cream',
-  inverse:
-    'bg-accent text-ink hover:bg-accent/90',
+    'bg-primary text-white shadow-[0_8px_20px_-6px_rgba(91,111,245,0.55)] hover:bg-primary-2 focus-visible:outline-white',
+  // A solid white pill for use on top of a colored/gradient surface (the
+  // final CTA panel) — dark text reads clearly against the color behind it.
+  inverse: 'bg-white text-ink shadow-glass-sm hover:bg-white/90',
+  // The glass/ghost action — translucent surface, thin border, never
+  // competes with primary.
   secondary:
-    'bg-white/70 text-ink border border-line hover:border-ink/30 hover:bg-white',
+    'border border-white/70 bg-white/60 text-ink backdrop-blur-sm hover:border-primary/30 hover:bg-white/80',
 }
 
 function Button({
@@ -21,7 +27,7 @@ function Button({
   ...props
 }) {
   const base =
-    'group inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-medium transition-colors duration-200 disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-50'
+    'group inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-medium transition-all duration-200 disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-50'
   const classes = `${base} ${VARIANT_CLASSES[variant] ?? ''} ${className}`
 
   const content = (

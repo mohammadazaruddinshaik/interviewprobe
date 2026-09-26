@@ -1,24 +1,67 @@
 @import "tailwindcss";
 @source "../**/*.{js,jsx}";
 
+/* ---------------------------------------------------------------------
+ * Design tokens — the single source of truth for color, radius, and
+ * motion across the whole app (marketing site, interview room, result
+ * page). Every component reaches these through Tailwind utility classes
+ * (bg-*, text-*, border-*) generated from these variables — never a raw
+ * hex value scattered in a component file.
+ *
+ * Palette: a calm, pastel blue/lavender "premium SaaS" system (glass
+ * surfaces over a soft blue backdrop), replacing the previous warm
+ * cream/orange one. Legacy token names (cream, ink, accent, line, muted,
+ * error) are kept as aliases pointing at the new palette so every
+ * existing component — the interview room, result page, setup flow —
+ * re-skins automatically with no per-component edits.
+ * --------------------------------------------------------------------- */
 @theme {
-  --color-cream: #faf9f6;
-  --color-cream-soft: #fff8f0;
-  --color-ink: #0b1628;
-  --color-accent: #f28c28;
-  --color-accent-soft: #fff0e3;
-  --color-accent-softer: #fff8f0;
-  --color-line: #e9e5de;
-  --color-muted: #536174;
-  /* A muted, warm-toned red for genuine failure states (never used for
-     helper/validation text — see --color-muted for that) — chosen to sit
-     alongside the accent orange rather than a raw, cooler default red. */
-  --color-error: #b3402a;
+  /* Backdrop — the pastel blue/lavender gradient the whole app sits on. */
+  --color-bg-1: #e5ebfd;
+  --color-bg-2: #cdd9fe;
+  --color-bg-3: #f8f9fd;
+
+  /* Surface — opaque/near-opaque panels above the backdrop. */
+  --color-surface: #ffffff;
+  --color-surface-soft: #f8faff;
+
+  /* Primary — blue/indigo, the one accent color used throughout. */
+  --color-primary: #5b6ff5;
+  --color-primary-2: #6677f5;
+  --color-primary-light: #dde4ff;
+  --color-primary-light-2: #eef1ff;
+
+  /* Text */
+  --color-text: #111827;
+  --color-text-secondary: #1f2937;
+  --color-muted: #6b7280;
+
+  /* Status */
+  --color-success: #10b981;
+  --color-danger: #ef4444;
+
+  /* Legacy aliases — every existing bg-cream/text-ink/border-line/etc.
+     class across the interview room, setup flow, and result page routes
+     through these, so the whole app shares one palette. */
+  --color-cream: var(--color-bg-3);
+  --color-cream-soft: var(--color-primary-light-2);
+  --color-ink: var(--color-text);
+  --color-accent: var(--color-primary);
+  --color-accent-soft: var(--color-primary-light);
+  --color-accent-softer: var(--color-primary-light-2);
+  --color-line: #e2e7fb;
+  --color-error: var(--color-danger);
 
   --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 
   --animate-float: float 6s ease-in-out infinite;
   --animate-rise: rise 0.5s ease-out both;
+  --animate-fade-up: fade-up 0.6s ease-out both;
+
+  /* A single, reused glass-surface shadow — soft and low-opacity, never a
+     hard/dark drop shadow. Generates `shadow-glass`/`shadow-glass-sm`. */
+  --shadow-glass: 0 1px 1px rgba(91, 111, 245, 0.03), 0 12px 32px -8px rgba(91, 111, 245, 0.16);
+  --shadow-glass-sm: 0 1px 1px rgba(91, 111, 245, 0.03), 0 6px 16px -6px rgba(91, 111, 245, 0.14);
 }
 
 @keyframes float {
@@ -35,6 +78,17 @@
   from {
     opacity: 0;
     transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
   }
   to {
     opacity: 1;
@@ -60,8 +114,14 @@ html {
 
 body {
   min-height: 100svh;
-  background-color: var(--color-cream);
-  color: var(--color-ink);
+  /* The soft pastel blue/lavender backdrop every page sits on — fixed so
+     it never re-tiles or jumps on scroll/resize. */
+  background-color: var(--color-bg-3);
+  background-image: radial-gradient(circle at 12% 0%, var(--color-bg-1) 0%, transparent 55%),
+    radial-gradient(circle at 100% 20%, var(--color-bg-2) 0%, transparent 45%),
+    linear-gradient(180deg, var(--color-bg-3) 0%, var(--color-bg-3) 100%);
+  background-attachment: fixed;
+  color: var(--color-text);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -74,12 +134,12 @@ body {
 }
 
 ::selection {
-  background-color: var(--color-accent-soft);
-  color: var(--color-ink);
+  background-color: var(--color-primary-light);
+  color: var(--color-text);
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
 
