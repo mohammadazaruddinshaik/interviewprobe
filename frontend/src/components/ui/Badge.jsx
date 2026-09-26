@@ -1,10 +1,12 @@
 // A small pill label — the hero eyebrow ("AI-Powered Interview Practice"),
 // a feature tag, a numbered step marker. One shared recipe so every pill
-// in the redesign matches, with `tone` covering the two shades actually
-// used (a soft primary tint, and a plain neutral one for on-glass use).
+// across the app matches, with `tone` covering the shades actually used.
 const TONE_CLASSES = {
   primary: 'bg-primary-light text-primary',
   neutral: 'bg-white/70 text-muted',
+  // A translucent glass chip with a thin border — the hero eyebrow's
+  // on-backdrop treatment, distinct from `primary`'s solid tint fill.
+  glass: 'border border-white/70 bg-white/70 text-primary',
 }
 
 function Badge({ tone = 'primary', className = '', children }) {

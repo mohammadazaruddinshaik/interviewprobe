@@ -31,14 +31,6 @@ export function ArrowRightIcon({ className }) {
   )
 }
 
-export function PlayIcon({ className }) {
-  return (
-    <svg {...base({ className, fill: 'currentColor', stroke: 'none' })}>
-      <path d="M8 5.5v13l11-6.5-11-6.5z" />
-    </svg>
-  )
-}
-
 export function MenuIcon({ className }) {
   return (
     <svg {...base({ className })}>
@@ -54,14 +46,6 @@ export function CloseIcon({ className }) {
     <svg {...base({ className })}>
       <path d="M6 6l12 12" />
       <path d="M18 6L6 18" />
-    </svg>
-  )
-}
-
-export function ChatIcon({ className }) {
-  return (
-    <svg {...base({ className })}>
-      <path d="M21 12a8 8 0 1 1-3.2-6.4L21 4l-1.2 3.6A8 8 0 0 1 21 12z" />
     </svg>
   )
 }
@@ -232,3 +216,4 @@ export function StopIcon({ className }) {
     </svg>
   )
 }
+

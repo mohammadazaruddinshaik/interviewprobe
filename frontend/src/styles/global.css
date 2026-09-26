@@ -40,6 +40,16 @@
   --color-success: #10b981;
   --color-danger: #ef4444;
 
+  /* The four pastel tints the landing page's feature-card grid cycles
+     through (card 1 reuses primary/primary-light). Kept to exactly the
+     three this page needs — not a general-purpose palette. */
+  --color-tint-purple: #8b5cf6;
+  --color-tint-purple-light: #ede9fe;
+  --color-tint-mint: #10b981;
+  --color-tint-mint-light: #d9f5ea;
+  --color-tint-peach: #f2994a;
+  --color-tint-peach-light: #fdecd8;
+
   /* Legacy aliases — every existing bg-cream/text-ink/border-line/etc.
      class across the interview room, setup flow, and result page routes
      through these, so the whole app shares one palette. */
