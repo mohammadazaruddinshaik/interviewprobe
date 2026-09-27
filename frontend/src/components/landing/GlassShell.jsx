@@ -8,7 +8,7 @@
 // corners rather than bleeding past them.
 function GlassShell({ children }) {
   return (
-    <div className="relative mx-auto max-w-[1600px] overflow-hidden rounded-[32px] border border-white/70 bg-white/45 shadow-glass backdrop-blur-2xl sm:rounded-[40px]">
+    <div className="relative mx-auto max-w-[1600px] overflow-hidden rounded-[32px] border border-glass/70 bg-glass/45 shadow-glass backdrop-blur-2xl sm:rounded-[40px]">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute -right-24 -top-32 h-96 w-96 rounded-full bg-primary-light/70 blur-3xl"

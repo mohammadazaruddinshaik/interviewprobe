@@ -5,6 +5,7 @@ import { getInterview, startInterview, submitInterviewAnswer } from '../api/inte
 import InterviewComplete from '../components/interview/InterviewComplete.jsx'
 import InterviewError from '../components/interview/InterviewError.jsx'
 import InterviewLoading from '../components/interview/InterviewLoading.jsx'
+import InterviewShell from '../components/interview/room/InterviewShell.jsx'
 import VoiceInterviewView from '../components/interview/voice/VoiceInterviewView.jsx'
 import { ROLE_LABELS } from '../data/interviewCatalog.js'
 import { useVoiceInterviewSession } from '../voice/useVoiceInterviewSession.js'
@@ -41,6 +42,17 @@ function Interview() {
   // text would be rejected as a reused-key conflict).
   const idempotencyRef = useRef({ key: null, answer: null })
   const questionHeadingRef = useRef(null)
+
+  // A same-session, frontend-only record of what has actually been asked
+  // and answered so far — never a fetched history (no such endpoint
+  // exists), never a fabricated one. Appended to exactly once per
+  // successful submission, from data already in this render's closure, so
+  // it can never show a question that wasn't really asked or an answer
+  // that wasn't really given. Reset to empty on reload (a resumed session
+  // only restores the current pending question, not this room's earlier
+  // turns) — the UI that reads this discloses that it's this session's
+  // visible history, not the full backend record.
+  const [transcript, setTranscript] = useState([])
 
   // Voice only ever appends recognized text into the same value typing
   // produces — it never submits the answer itself, so the result behaves
@@ -158,6 +170,10 @@ function Interview() {
       })
 
       idempotencyRef.current = { key: null, answer: null }
+      setTranscript((entries) => [
+        ...entries,
+        { questionId: question.id, questionText: question.text, leadIn: question.lead_in, answer: trimmedAnswer },
+      ])
       setAnswer('')
 
       if (result.question) {
@@ -233,46 +249,48 @@ function Interview() {
 
   if (phase === 'loading') {
     return (
-      <div className="min-h-screen bg-cream">
+      <InterviewShell>
         <InterviewLoading />
-      </div>
+      </InterviewShell>
     )
   }
 
   if (phase === 'error') {
     return (
-      <div className="min-h-screen bg-cream">
+      <InterviewShell>
         <InterviewError message={loadError ?? GENERIC_LOAD_ERROR} onRetry={handleRetryLoad} />
-      </div>
+      </InterviewShell>
     )
   }
 
   if (phase === 'restore_failed') {
     return (
-      <div className="min-h-screen bg-cream">
+      <InterviewShell>
         <InterviewError message="Interview state couldn't be restored. Please try again." onRetry={handleRetryLoad}>
           <Link to="/interview/new" className="mt-4 inline-block text-sm font-medium text-accent hover:underline">
             Start a new interview
           </Link>
         </InterviewError>
-      </div>
+      </InterviewShell>
     )
   }
 
   if (phase === 'completed') {
     return (
-      <div className="min-h-screen bg-cream">
+      <InterviewShell>
         <InterviewComplete sessionId={sessionId} />
-      </div>
+      </InterviewShell>
     )
   }
 
   // Voice is the interview — the room is the only interview workspace, not
   // one of two presentations. It reads the exact same
   // `question`/`answer`/`handleFinishAnswer`/`voice` state this page has
-  // always owned; only the rendering is voice-first now.
+  // always owned; only the rendering is voice-first now. VoiceInterviewView
+  // renders its own InterviewShell (it also owns the navbar/room layout),
+  // so this phase doesn't wrap it in a second one.
   return (
-    <div className="min-h-screen bg-cream">
+    <>
       <VoiceInterviewView
         voice={voice}
         question={question}
@@ -282,6 +300,7 @@ function Interview() {
         onSubmit={handleFinishAnswer}
         submitting={isSubmitting}
         headingRef={questionHeadingRef}
+        transcript={transcript}
       />
 
       {submitError && (
@@ -291,7 +310,7 @@ function Interview() {
           </p>
         </div>
       )}
-    </div>
+    </>
   )
 }
 

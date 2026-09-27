@@ -1,15 +1,21 @@
+import InterviewControls from '../room/InterviewControls.jsx'
+import InterviewNavbar from '../room/InterviewNavbar.jsx'
+import InterviewShell from '../room/InterviewShell.jsx'
+import InterviewSidebar from '../room/InterviewSidebar.jsx'
+import InterviewerVideo from '../room/InterviewerVideo.jsx'
+import QuestionPanel from '../room/QuestionPanel.jsx'
+import TranscriptPanel from '../room/TranscriptPanel.jsx'
+import VoiceStatusBar from '../room/VoiceStatusBar.jsx'
 import { VOICE_STATUS } from '../../../voice/voiceState.js'
-import CandidateStage from './CandidateStage.jsx'
 import { INTERVIEWER } from './interviewer.js'
-import InterviewerStage from './InterviewerStage.jsx'
-import VoiceControls from './VoiceControls.jsx'
-import VoiceInterviewHeader from './VoiceInterviewHeader.jsx'
 
 // The dedicated voice room. A pure presentation layer over
 // useVoiceInterviewSession()'s return value (`voice`) — every child here
 // just renders a slice of that same state and calls its commands; nothing
 // in this tree owns TTS/STT lifecycle, talks to a speech provider
-// directly, or keeps a second copy of the answer.
+// directly, or keeps a second copy of the answer. `transcript` is the one
+// piece of state this page (Interview.jsx) does own beyond the session
+// hook — a same-session record of turns that have really happened.
 function VoiceInterviewView({
   voice,
   interviewer = INTERVIEWER,
@@ -20,6 +26,7 @@ function VoiceInterviewView({
   onSubmit,
   submitting,
   headingRef,
+  transcript = [],
 }) {
   const { state, activeChannel, isSpeakerSpeaking, micUiState, ttsSupported, sttSupported, commands } = voice
 
@@ -29,60 +36,75 @@ function VoiceInterviewView({
   const hasError = state.status === VOICE_STATUS.ERROR && state.error
 
   return (
-    <div className="flex min-h-screen flex-col bg-cream">
-      <VoiceInterviewHeader roleLabel={roleLabel} />
+    <InterviewShell>
+      <InterviewNavbar />
 
-      <main className="mx-auto grid w-full max-w-5xl flex-1 gap-4 px-6 py-6 sm:px-8 lg:grid-cols-[1fr_260px] lg:items-start lg:gap-6">
-        <InterviewerStage
-          interviewer={interviewer}
-          isSpeaking={isSpeakerSpeaking}
-          questionText={questionText}
-          leadIn={leadIn}
-          status={state.status}
-          interimTranscript={state.interimTranscript}
-          answer={answer}
-          onAnswerChange={onAnswerChange}
-          onSubmit={onSubmit}
-          submitting={submitting}
-          headingRef={headingRef}
-        />
+      {/* Mobile recomposes this into a priority-ordered single column
+          (navbar, interviewer, question, voice state, Finish Answer,
+          transcript) rather than shrinking the desktop 3-column dashboard
+          — the sidebar's role/guidance content is real but lower priority,
+          so it moves to the very end via `order-*` instead of appearing
+          first just because it's the first grid column on desktop. */}
+      <main className="grid grid-cols-1 flex-1 gap-4 px-4 pb-4 pt-3 sm:px-6 sm:pb-6 lg:grid-cols-[220px_minmax(0,1fr)_300px] lg:gap-5 lg:px-8 lg:pb-6 xl:grid-cols-[240px_minmax(0,1fr)_340px]">
+        <InterviewSidebar roleLabel={roleLabel} className="order-3 min-w-0 lg:order-1" />
 
-        <CandidateStage status={state.status} />
-      </main>
+        <div className="order-1 flex min-w-0 flex-col gap-4 lg:order-2">
+          <InterviewerVideo interviewer={interviewer} isSpeaking={isSpeakerSpeaking} status={state.status} />
 
-      {hasError && (
-        <div className="mx-auto w-full max-w-3xl px-6 pb-2 sm:px-8">
-          <div
-            role="alert"
-            aria-live="assertive"
-            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-error/30 bg-white/70 px-4 py-3 text-sm text-error"
-          >
-            <span>{state.error.message}</span>
-            {state.error.recoverable && (
-              <button type="button" onClick={commands.clearError} className="font-medium underline underline-offset-2">
-                Dismiss
-              </button>
-            )}
-          </div>
+          {hasError && (
+            <div
+              role="alert"
+              aria-live="assertive"
+              className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-danger/30 bg-glass/70 px-4 py-3 text-sm text-danger"
+            >
+              <span>{state.error.message}</span>
+              {state.error.recoverable && (
+                <button type="button" onClick={commands.clearError} className="font-medium underline underline-offset-2">
+                  Dismiss
+                </button>
+              )}
+            </div>
+          )}
+
+          <QuestionPanel
+            questionText={questionText}
+            leadIn={leadIn}
+            interimTranscript={state.interimTranscript}
+            answer={answer}
+            onAnswerChange={onAnswerChange}
+            onSubmit={onSubmit}
+            submitting={submitting}
+            headingRef={headingRef}
+          />
+
+          <VoiceStatusBar status={state.status} />
+
+          <InterviewControls
+            isSpeakerSpeaking={isSpeakerSpeaking}
+            speakerDisabled={activeChannel === 'mic' || !questionText}
+            speakerSupported={ttsSupported}
+            onReplay={commands.replayQuestion}
+            onStopSpeaking={commands.stopSpeaking}
+            micUiState={micUiState}
+            micDisabled={submitting || activeChannel === 'speaker'}
+            micSupported={sttSupported}
+            onStartListening={commands.startListening}
+            onStopListening={commands.stopListening}
+            canSubmit={canSubmit}
+            submitting={submitting}
+            onSubmit={onSubmit}
+          />
         </div>
-      )}
 
-      <VoiceControls
-        isSpeakerSpeaking={isSpeakerSpeaking}
-        speakerDisabled={activeChannel === 'mic' || !questionText}
-        speakerSupported={ttsSupported}
-        onReplay={commands.replayQuestion}
-        onStopSpeaking={commands.stopSpeaking}
-        micUiState={micUiState}
-        micDisabled={submitting || activeChannel === 'speaker'}
-        micSupported={sttSupported}
-        onStartListening={commands.startListening}
-        onStopListening={commands.stopListening}
-        canSubmit={canSubmit}
-        submitting={submitting}
-        onSubmit={onSubmit}
-      />
-    </div>
+        <TranscriptPanel
+          transcript={transcript}
+          currentQuestionText={questionText}
+          currentAnswer={answer}
+          interimTranscript={state.interimTranscript}
+          className="order-2 min-w-0 lg:order-3"
+        />
+      </main>
+    </InterviewShell>
   )
 }
 

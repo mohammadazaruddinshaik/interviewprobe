@@ -29,8 +29,8 @@ function ControlButton({ children, tone = 'neutral', label }) {
     tone === 'danger'
       ? 'bg-danger text-white hover:bg-danger/90'
       : tone === 'dark'
-        ? 'bg-ink text-white hover:bg-ink/85'
-        : 'border border-white/80 bg-white text-ink hover:bg-white/90'
+        ? 'bg-ink-fixed text-white hover:bg-ink-fixed/85'
+        : 'border border-glass/80 bg-glass text-ink hover:bg-glass/90'
   return (
     <button
       type="button"
@@ -66,7 +66,7 @@ function InterviewPreview() {
           </nav>
 
           <div className="flex items-center gap-2.5">
-            <span className="rounded-full bg-white/70 px-3.5 py-1.5 text-xs font-medium text-muted">24:36</span>
+            <span className="rounded-full bg-glass/70 px-3.5 py-1.5 text-xs font-medium text-muted">24:36</span>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-danger px-3.5 py-1.5 text-xs font-semibold text-white">
               <Square className="h-3 w-3" strokeWidth={2.25} fill="currentColor" />
               End Interview
@@ -86,20 +86,20 @@ function InterviewPreview() {
               leaving empty space below the photo that the absolutely-
               positioned control bar would float into instead of the
               image's true bottom edge. */}
-          <div className="relative self-start overflow-hidden rounded-[24px] border border-white/70 bg-ink/5 shadow-glass-sm">
+          <div className="relative self-start overflow-hidden rounded-[24px] border border-glass/70 bg-ink/5 shadow-glass-sm">
             <img
               src="/assets/people/interviewer.webp"
               alt="AI interviewer on a video call"
               className="aspect-[4/3] w-full object-cover object-[center_18%]"
             />
 
-            <div className="absolute right-4 top-4 h-[4.5rem] w-24 overflow-hidden rounded-2xl border-2 border-white/90 shadow-glass-sm">
+            <div className="absolute right-4 top-4 h-[4.5rem] w-24 overflow-hidden rounded-2xl border-2 border-glass/90 shadow-glass-sm">
               <img
                 src="/assets/people/candidate.webp"
                 alt="Candidate on a video call"
                 className="h-full w-full object-cover object-top"
               />
-              <span className="absolute bottom-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-white/90">
+              <span className="absolute bottom-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-glass/90">
                 <span className="flex items-end gap-px" aria-hidden="true">
                   <span className="w-[1.5px] animate-pulse rounded-full bg-primary" style={{ height: '3px' }} />
                   <span
@@ -114,7 +114,7 @@ function InterviewPreview() {
               </span>
             </div>
 
-            <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2.5 rounded-full bg-white/90 p-2 shadow-glass-sm backdrop-blur-sm">
+            <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-2.5 rounded-full bg-glass/90 p-2 shadow-glass-sm backdrop-blur-sm">
               <ControlButton label="Microphone">
                 <Mic className="h-4 w-4" strokeWidth={1.75} />
               </ControlButton>
@@ -146,7 +146,7 @@ function InterviewPreview() {
               <div
                 key={question.number}
                 className={`flex flex-col gap-2 rounded-2xl border p-4 ${
-                  question.done ? 'border-white/70 bg-white/70' : 'border-primary/20 bg-primary-light/50'
+                  question.done ? 'border-glass/70 bg-glass/70' : 'border-primary/20 bg-primary-light/50'
                 }`}
               >
                 <span
@@ -170,7 +170,7 @@ function InterviewPreview() {
         {/* AI interviewer status strip — a real, generously-sized part of
             the interface, not a thin notification. */}
         <div className="mt-5 flex items-center gap-3 rounded-2xl bg-primary-light/60 px-5 py-4">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/80 text-primary">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-glass/80 text-primary">
             <Sparkles className="h-4 w-4" strokeWidth={1.75} />
           </span>
           <p className="text-sm font-medium text-ink/80">

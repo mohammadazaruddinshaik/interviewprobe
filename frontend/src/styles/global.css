@@ -25,6 +25,13 @@
   --color-surface: #ffffff;
   --color-surface-soft: #f8faff;
 
+  /* Glass — the one surface color every card/nav/shell panel is built
+     from (always used with a `/NN` opacity, e.g. `bg-glass/60`). Light
+     mode's glass is white; dark mode redefines this one variable (see
+     `[data-theme="dark"]` below) and every glass surface in the app
+     re-skins with it, with no per-component changes. */
+  --color-glass: #ffffff;
+
   /* Primary — blue/indigo, the one accent color used throughout. */
   --color-primary: #5b6ff5;
   --color-primary-2: #6677f5;
@@ -40,15 +47,18 @@
   --color-success: #10b981;
   --color-danger: #ef4444;
 
-  /* The four pastel tints the landing page's feature-card grid cycles
-     through (card 1 reuses primary/primary-light). Kept to exactly the
-     three this page needs — not a general-purpose palette. */
+  /* Pastel tints the landing page's feature-card grid and the setup
+     page's feature list cycle through (each page's "card 1" reuses
+     primary/primary-light instead). Kept to exactly what these two pages
+     need — not a general-purpose palette. */
   --color-tint-purple: #8b5cf6;
   --color-tint-purple-light: #ede9fe;
   --color-tint-mint: #10b981;
   --color-tint-mint-light: #d9f5ea;
   --color-tint-peach: #f2994a;
   --color-tint-peach-light: #fdecd8;
+  --color-tint-pink: #ec4899;
+  --color-tint-pink-light: #fce7f3;
 
   /* Legacy aliases — every existing bg-cream/text-ink/border-line/etc.
      class across the interview room, setup flow, and result page routes
@@ -56,6 +66,12 @@
   --color-cream: var(--color-bg-3);
   --color-cream-soft: var(--color-primary-light-2);
   --color-ink: var(--color-text);
+
+  /* A deliberately theme-INDEPENDENT near-black, for the rare control that
+     must read as "the dark one" in both themes (e.g. a video call's
+     "more options" button) — unlike `--color-ink`, this never flips to
+     near-white under `[data-theme="dark"]`. */
+  --color-ink-fixed: #111827;
   --color-accent: var(--color-primary);
   --color-accent-soft: var(--color-primary-light);
   --color-accent-softer: var(--color-primary-light-2);
@@ -72,6 +88,43 @@
      hard/dark drop shadow. Generates `shadow-glass`/`shadow-glass-sm`. */
   --shadow-glass: 0 1px 1px rgba(91, 111, 245, 0.03), 0 12px 32px -8px rgba(91, 111, 245, 0.16);
   --shadow-glass-sm: 0 1px 1px rgba(91, 111, 245, 0.03), 0 6px 16px -6px rgba(91, 111, 245, 0.14);
+}
+
+/* ---------------------------------------------------------------------
+ * Dark theme — a real, complete override of the same tokens `@theme`
+ * defines above (not a filter/invert). Applied via `data-theme="dark"`
+ * on <html>, set by useTheme.js from localStorage or, on a first visit,
+ * `prefers-color-scheme`. Every `bg-*`/`text-*`/`border-*` utility in the
+ * app already resolves through one of these CSS variables, so this block
+ * is the entire dark-mode implementation — no component re-skinning.
+ * --------------------------------------------------------------------- */
+:root[data-theme='dark'] {
+  --color-bg-1: #182036;
+  --color-bg-2: #121729;
+  --color-bg-3: #0a0e1a;
+
+  --color-surface: #121629;
+  --color-surface-soft: #161b30;
+  --color-glass: #141a30;
+
+  --color-primary-light: rgba(107, 125, 255, 0.22);
+  --color-primary-light-2: rgba(107, 125, 255, 0.12);
+
+  --color-text: #eef1fb;
+  --color-text-secondary: #d7dcf2;
+  --color-muted: #93a0c4;
+
+  --color-tint-purple-light: rgba(167, 139, 250, 0.2);
+  --color-tint-mint-light: rgba(52, 211, 153, 0.18);
+  --color-tint-peach-light: rgba(251, 146, 60, 0.2);
+  --color-tint-pink-light: rgba(244, 114, 182, 0.2);
+
+  --color-line: rgba(226, 231, 251, 0.14);
+
+  --shadow-glass: 0 1px 1px rgba(0, 0, 0, 0.12), 0 12px 32px -8px rgba(0, 0, 0, 0.45);
+  --shadow-glass-sm: 0 1px 1px rgba(0, 0, 0, 0.12), 0 6px 16px -6px rgba(0, 0, 0, 0.4);
+
+  color-scheme: dark;
 }
 
 @keyframes float {
@@ -120,6 +173,19 @@ body {
 
 html {
   scroll-behavior: smooth;
+}
+
+/* A soft cross-fade when the theme itself is switched — not a per-hover
+   transition (those already opt in per-component via `transition-colors`). */
+html {
+  transition: background-color 0.25s ease;
+}
+
+body,
+#root {
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease;
 }
 
 body {

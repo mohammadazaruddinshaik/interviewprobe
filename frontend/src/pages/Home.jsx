@@ -4,7 +4,6 @@ import FeatureStrip from '../components/landing/FeatureStrip.jsx'
 import GlassShell from '../components/landing/GlassShell.jsx'
 import HeroSection from '../components/landing/HeroSection.jsx'
 import LandingNavbar from '../components/landing/LandingNavbar.jsx'
-import TrustSection from '../components/landing/TrustSection.jsx'
 
 function Home() {
   return (
@@ -14,7 +13,6 @@ function Home() {
           <LandingNavbar />
           <HeroSection />
           <FeatureStrip />
-          <TrustSection />
           <FeatureCardGrid />
         </GlassShell>
       </div>

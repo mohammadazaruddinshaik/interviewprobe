@@ -15,6 +15,25 @@
       rel="stylesheet"
     />
     <title>InterviewProbe</title>
+    <script>
+      // Set the theme before first paint so there's no flash of the wrong
+      // theme — the React hook (src/hooks/useTheme.js) takes over from
+      // here and keeps this in sync with any later change.
+      ;(function () {
+        try {
+          var stored = localStorage.getItem('interviewprobe-theme')
+          var theme =
+            stored === 'light' || stored === 'dark'
+              ? stored
+              : window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light'
+          document.documentElement.setAttribute('data-theme', theme)
+        } catch (e) {
+          // Storage blocked — default to light, same as the hook's fallback.
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

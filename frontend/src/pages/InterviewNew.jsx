@@ -1,30 +1,16 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../api/client.js'
 import { createInterview } from '../api/interviews.js'
-import Navbar from '../components/layout/Navbar.jsx'
-import RoleSelector from '../components/interview/RoleSelector.jsx'
+import InterviewPreview from '../components/setup/InterviewPreview.jsx'
+import InterviewStepper from '../components/setup/InterviewStepper.jsx'
+import RoleSelector from '../components/setup/RoleSelector.jsx'
+import SetupFeatureList from '../components/setup/SetupFeatureList.jsx'
+import SetupHeader from '../components/setup/SetupHeader.jsx'
+import SetupNavbar from '../components/setup/SetupNavbar.jsx'
+import SetupShell from '../components/setup/SetupShell.jsx'
 import Button from '../components/ui/Button.jsx'
-import { ArrowLeftIcon, BookIcon, ChartIcon, TargetIcon } from '../components/ui/icons.jsx'
 import { DEFAULT_DIFFICULTY, DEFAULT_QUESTION_COUNT, ROLES, getDefaultTopicsForRole } from '../data/interviewCatalog.js'
-
-const BENEFITS = [
-  {
-    icon: TargetIcon,
-    title: 'Realistic and adaptive',
-    description: 'Questions adjust to your answers.',
-  },
-  {
-    icon: ChartIcon,
-    title: 'Focused practice',
-    description: 'Covers the areas that matter for your role.',
-  },
-  {
-    icon: BookIcon,
-    title: 'Build confidence',
-    description: 'Walk into your real interview prepared.',
-  },
-]
 
 function InterviewNew() {
   const navigate = useNavigate()
@@ -45,10 +31,10 @@ function InterviewNew() {
     setErrorMessage(null)
     try {
       // Only the role is a candidate choice — difficulty, topic breadth, and
-      // pacing are decided by the Technical Round itself from here on
-      // (LangGraph adapts every question already; the backend still requires
-      // these fields on creation, so they're derived from the role's own
-      // catalog entry rather than exposed as controls).
+      // pacing are decided by the interview itself from here on (the
+      // adaptive engine adjusts every question already; the backend still
+      // requires these fields on creation, so they're derived from the
+      // role's own catalog entry rather than exposed as controls).
       const interview = await createInterview({
         role: roleId,
         difficulty: DEFAULT_DIFFICULTY,
@@ -65,99 +51,65 @@ function InterviewNew() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-cream">
+    <div className="relative overflow-x-hidden text-ink">
       <div
         aria-hidden="true"
-        className="pointer-events-none fixed inset-0 -z-10 bg-cover bg-no-repeat opacity-90"
+        className="pointer-events-none absolute -left-16 -top-16 h-64 w-64 rounded-full bg-primary-light/50 opacity-70 blur-3xl sm:-left-24 sm:-top-24 sm:h-96 sm:w-96"
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -bottom-8 -right-8 h-56 w-56 opacity-[0.35] sm:h-72 sm:w-72"
         style={{
-          backgroundImage: 'url(/images/interview-setup-background.png)',
-          backgroundPosition: 'left bottom',
+          backgroundImage: 'radial-gradient(var(--color-primary) 1px, transparent 1px)',
+          backgroundSize: '18px 18px',
+          maskImage: 'radial-gradient(circle at bottom right, black 0%, transparent 70%)',
+          WebkitMaskImage: 'radial-gradient(circle at bottom right, black 0%, transparent 70%)',
         }}
       />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none fixed inset-0 -z-10 bg-gradient-to-b from-cream/40 via-transparent to-cream/60"
-      />
+      <div className="relative px-3 py-2.5 sm:px-5 sm:py-3 lg:px-6 lg:py-4">
+        <SetupShell>
+          <SetupNavbar />
 
-      <Navbar />
+          <main className="px-4 pb-4 pt-3 sm:px-6 lg:px-8 lg:pb-5 lg:pt-4">
+            <SetupHeader />
 
-      <main className="mx-auto max-w-7xl px-6 pb-24 pt-10">
-        <Link
-          to="/"
-          className="inline-flex items-center gap-2 text-sm font-medium text-ink/70 transition-colors duration-200 hover:text-ink"
-        >
-          <ArrowLeftIcon className="h-4 w-4" />
-          Back to home
-        </Link>
+            <div className="mt-4 grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_280px] xl:grid-cols-[minmax(0,1fr)_340px]">
+              <div className="flex min-w-0 flex-col justify-between rounded-[22px] border border-glass/70 bg-glass/60 p-3 shadow-glass-sm sm:p-4 lg:p-5">
+                <div>
+                  <InterviewStepper activeStep={1} />
 
-        <div className="mt-10 grid gap-12 lg:grid-cols-[0.85fr_1.15fr] lg:items-start lg:gap-10">
-          <div className="max-w-md lg:sticky lg:top-28">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">
-              Technical Round
-            </p>
-            <h1 className="mt-4 text-4xl font-semibold leading-[1.1] tracking-tight text-ink sm:text-5xl">
-              Prepare for
-              <br />
-              <span className="text-accent">what&apos;s next.</span>
-            </h1>
-            <p className="mt-5 leading-relaxed text-muted">
-              Choose the role you want to practice for. We&apos;ll run a real, adaptive
-              technical round and adjust every question to how you answer.
-            </p>
+                  <p className="mb-1 mt-4 text-xs font-semibold uppercase tracking-wide text-muted">Select Role</p>
 
-            <ul className="mt-9 flex flex-col gap-6">
-              {BENEFITS.map((benefit) => (
-                <li key={benefit.title} className="flex items-start gap-3.5">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
-                    <benefit.icon className="h-5 w-5" />
-                  </span>
-                  <div>
-                    <p className="text-sm font-semibold text-ink">{benefit.title}</p>
-                    <p className="mt-0.5 text-sm leading-relaxed text-muted">
-                      {benefit.description}
+                  <RoleSelector roles={ROLES} value={roleId} onChange={handleRoleChange} />
+                </div>
+
+                <div className="mt-4">
+                  <Button
+                    onClick={handleStart}
+                    disabled={isSubmitting}
+                    aria-busy={isSubmitting}
+                    variant="primary"
+                    withArrow={!isSubmitting}
+                    className="w-full justify-center bg-gradient-to-br from-[#94a1f8] to-primary py-3 text-sm shadow-[0_10px_28px_-8px_rgba(91,111,245,0.55)]"
+                  >
+                    {isSubmitting ? 'Starting your interview…' : 'Start Interview'}
+                  </Button>
+                  {errorMessage && (
+                    <p role="alert" aria-live="assertive" className="mt-2 text-center text-xs text-error">
+                      {errorMessage}
                     </p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="motion-safe:animate-rise rounded-3xl border border-line/70 bg-cream-soft/80 p-6 shadow-xl shadow-ink/5 backdrop-blur-sm sm:p-8">
-            <div className="border-b border-line/70 pb-5">
-              <h2 className="text-xl font-semibold text-ink sm:text-2xl">Technical Round</h2>
-              <p className="mt-1.5 text-sm leading-relaxed text-muted">
-                Select your role — everything else about the interview is handled for you.
-              </p>
-            </div>
-
-            <section className="py-7">
-              <h3 className="text-base font-semibold text-ink">Select your role</h3>
-              <p className="mt-0.5 text-sm text-muted">Choose the role you want to practice for.</p>
-              <div className="mt-4">
-                <RoleSelector roles={ROLES} value={roleId} onChange={handleRoleChange} />
+                  )}
+                </div>
               </div>
-            </section>
 
-            <div className="pt-1">
-              <Button
-                onClick={handleStart}
-                disabled={isSubmitting}
-                aria-busy={isSubmitting}
-                variant="inverse"
-                withArrow={!isSubmitting}
-                className="w-full justify-center"
-              >
-                {isSubmitting ? 'Starting your Technical Round…' : 'Start Technical Round'}
-              </Button>
-              {errorMessage && (
-                <p role="alert" aria-live="assertive" className="mt-3 text-center text-sm text-error">
-                  {errorMessage}
-                </p>
-              )}
+              <div className="flex min-w-0 flex-col justify-between gap-3">
+                <InterviewPreview />
+                <SetupFeatureList />
+              </div>
             </div>
-          </div>
-        </div>
-      </main>
+          </main>
+        </SetupShell>
+      </div>
     </div>
   )
 }

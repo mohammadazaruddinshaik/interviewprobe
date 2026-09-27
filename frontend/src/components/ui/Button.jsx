@@ -9,11 +9,11 @@ const VARIANT_CLASSES = {
     'bg-primary text-white shadow-[0_8px_20px_-6px_rgba(91,111,245,0.55)] hover:bg-primary-2 focus-visible:outline-white',
   // A solid white pill for use on top of a colored/gradient surface (the
   // final CTA panel) — dark text reads clearly against the color behind it.
-  inverse: 'bg-white text-ink shadow-glass-sm hover:bg-white/90',
+  inverse: 'bg-glass text-ink shadow-glass-sm hover:bg-glass/90',
   // The glass/ghost action — translucent surface, thin border, never
   // competes with primary.
   secondary:
-    'border border-white/70 bg-white/60 text-ink backdrop-blur-sm hover:border-primary/30 hover:bg-white/80',
+    'border border-glass/70 bg-glass/60 text-ink backdrop-blur-sm hover:border-primary/30 hover:bg-glass/80',
 }
 
 function Button({

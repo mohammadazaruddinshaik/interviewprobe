@@ -3,10 +3,10 @@
 // across the app matches, with `tone` covering the shades actually used.
 const TONE_CLASSES = {
   primary: 'bg-primary-light text-primary',
-  neutral: 'bg-white/70 text-muted',
+  neutral: 'bg-glass/70 text-muted',
   // A translucent glass chip with a thin border — the hero eyebrow's
   // on-backdrop treatment, distinct from `primary`'s solid tint fill.
-  glass: 'border border-white/70 bg-white/70 text-primary',
+  glass: 'border border-glass/70 bg-glass/70 text-primary',
 }
 
 function Badge({ tone = 'primary', className = '', children }) {

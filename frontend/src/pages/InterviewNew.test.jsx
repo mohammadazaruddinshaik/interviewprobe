@@ -26,7 +26,7 @@ import { ApiError } from '../api/client.js'
 import { DEFAULT_DIFFICULTY, DEFAULT_QUESTION_COUNT, ROLES } from '../data/interviewCatalog.js'
 import InterviewNew from './InterviewNew.jsx'
 
-const START_LABEL = 'Start Technical Round'
+const START_LABEL = 'Start Interview'
 
 function deferred() {
   let resolve
@@ -62,7 +62,7 @@ describe('InterviewNew.jsx — Technical Round setup', () => {
   it('1. shows a role selector, defaulting to the first role, with a ready-to-click submit', () => {
     renderInterviewNew()
 
-    expect(screen.getByText('Select your role')).toBeTruthy()
+    expect(screen.getByText('Select Role')).toBeTruthy()
     expect(screen.getByRole('button', { name: /AI Engineer/ })).toHaveProperty('ariaPressed', 'true')
     expect(screen.getByRole('button', { name: START_LABEL })).toHaveProperty('disabled', false)
   })
@@ -95,8 +95,14 @@ describe('InterviewNew.jsx — Technical Round setup', () => {
   it('5. renders no voice/text mode selection control', () => {
     renderInterviewNew()
 
-    expect(screen.queryByText(/voice/i)).toBeNull()
-    expect(screen.queryByText(/text mode/i)).toBeNull()
+    // The redesign's feature list truthfully describes voice as a product
+    // capability ("Voice-First Experience") — that's descriptive copy, not
+    // a control. What this test actually guards against (per its name) is
+    // an interactive mode toggle the candidate could operate; there is none.
+    expect(screen.queryByRole('button', { name: /voice/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /text mode/i })).toBeNull()
+    expect(screen.queryByRole('radio', { name: /voice|text mode/i })).toBeNull()
+    expect(screen.queryByRole('checkbox', { name: /voice|text mode/i })).toBeNull()
   })
 
   // -------------------------------------------------------------------
@@ -176,7 +182,7 @@ describe('InterviewNew.jsx — Technical Round setup', () => {
 
     fireEvent.click(screen.getByRole('button', { name: START_LABEL }))
 
-    const busyButton = await screen.findByRole('button', { name: 'Starting your Technical Round…' })
+    const busyButton = await screen.findByRole('button', { name: 'Starting your interview…' })
     expect(busyButton).toHaveProperty('disabled', true)
 
     resolve({ id: 'session-x' })
