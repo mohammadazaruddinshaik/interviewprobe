@@ -58,6 +58,18 @@ export async function submitInterviewAnswer(sessionId, { questionId, answer, ide
   return response.data
 }
 
+// POST /interviews/{id}/complete -> DataResponse[CompleteInterviewResponse]:
+// { session_id, status, evaluation_status }
+// The existing early-completion endpoint (backend/app/api/routes/
+// interviews.py). No request body, no idempotency key. Only valid while the
+// session is IN_PROGRESS — 409 (INVALID_INTERVIEW_STATE) otherwise, and a
+// busy per-interview lock is also rejected. The current unanswered question
+// is left unanswered; the result page already handles that case.
+export async function completeInterview(sessionId) {
+  const response = await apiClient.post(`/interviews/${sessionId}/complete`)
+  return response.data
+}
+
 // GET /interviews/{id}/result -> DataResponse[InterviewResultResponse]:
 // {
 //   interview: { session_id, role, difficulty, status, question_limit, started_at, completed_at, created_at },

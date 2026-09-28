@@ -1,21 +1,23 @@
 import Footer from '../components/layout/Footer.jsx'
-import FeatureCardGrid from '../components/landing/FeatureCardGrid.jsx'
 import FeatureStrip from '../components/landing/FeatureStrip.jsx'
-import GlassShell from '../components/landing/GlassShell.jsx'
 import HeroSection from '../components/landing/HeroSection.jsx'
+import LandingBackdrop from '../components/landing/LandingBackdrop.jsx'
 import LandingNavbar from '../components/landing/LandingNavbar.jsx'
+import WhySection from '../components/landing/WhySection.jsx'
 
+// Landing sits directly on the open backdrop (floating navbar, arcs,
+// dotted fields), not inside one boxed shell — the master reference's
+// composition. Five parts only: navbar, hero, capability band, why, footer.
 function Home() {
   return (
-    <div className="text-ink">
-      <div className="px-3 py-3 sm:px-5 sm:py-5 lg:px-8 lg:py-6">
-        <GlassShell>
-          <LandingNavbar />
-          <HeroSection />
-          <FeatureStrip />
-          <FeatureCardGrid />
-        </GlassShell>
-      </div>
+    <div className="relative isolate min-h-screen text-ink">
+      <LandingBackdrop />
+      <LandingNavbar />
+      <main>
+        <HeroSection />
+        <FeatureStrip />
+        <WhySection />
+      </main>
       <Footer />
     </div>
   )

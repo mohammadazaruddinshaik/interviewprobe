@@ -4,7 +4,7 @@
 // nothing on this page can ever visually regress Landing and vice versa.
 function SetupShell({ children }) {
   return (
-    <div className="relative mx-auto max-w-[1600px] overflow-hidden rounded-[32px] border border-glass/70 bg-glass/45 shadow-glass backdrop-blur-2xl sm:rounded-[40px]">
+    <div className="relative mx-auto w-full max-w-[1600px] overflow-hidden rounded-[32px] border border-glass/70 bg-glass/45 shadow-glass backdrop-blur-2xl sm:rounded-[40px] lg:flex lg:flex-1 lg:flex-col">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute -right-24 -top-32 h-96 w-96 rounded-full bg-primary-light/70 blur-3xl"
@@ -13,7 +13,7 @@ function SetupShell({ children }) {
         aria-hidden="true"
         className="pointer-events-none absolute -left-32 bottom-0 h-96 w-96 rounded-full bg-tint-purple-light/50 blur-3xl"
       />
-      <div className="relative">{children}</div>
+      <div className="relative lg:flex lg:flex-1 lg:flex-col">{children}</div>
     </div>
   )
 }

@@ -77,7 +77,7 @@ describe('VoiceInterviewView', () => {
 
   it('4. displays the candidate finalized answer', () => {
     render(<VoiceInterviewView {...baseProps({ answer: 'Redis SETNX with a TTL implements the lock.' })} />)
-    expect(screen.getByLabelText('Your answer').value).toBe('Redis SETNX with a TTL implements the lock.')
+    expect(screen.getByLabelText('Your answer').textContent).toBe('Redis SETNX with a TTL implements the lock.')
   })
 
   it('5. shows the interviewer speaking indicator while speaking', () => {

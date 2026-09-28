@@ -1,54 +1,49 @@
-import { BarChart3, FileText, MessageCircle, Mic } from 'lucide-react'
+import { AdaptiveIcon, EvaluationIcon, QuestionIcon, VoiceInterviewIcon } from '../ui/interviewIcons.jsx'
 
+// What the candidate is about to get, in the product's own icon family
+// (never generic Lucide concept icons), placed directly as accents.
+// Every line describes real behavior: role-specific questions, adaptive
+// follow-ups, a scored evaluation with strengths and gaps, and spoken
+// answers.
 const FEATURES = [
   {
-    icon: MessageCircle,
-    tint: 'mint',
+    icon: QuestionIcon,
     title: 'Realistic Questions',
     description: 'Role-specific, industry-relevant questions',
   },
   {
-    icon: BarChart3,
-    tint: 'purple',
+    icon: AdaptiveIcon,
     title: 'Adaptive Follow-ups',
     description: 'Questions adapt based on your answers',
   },
   {
-    icon: FileText,
-    tint: 'peach',
+    icon: EvaluationIcon,
     title: 'Detailed Feedback',
-    description: 'Strengths, improvements and suggestions',
+    description: 'Strengths, gaps and evidence',
   },
   {
-    icon: Mic,
-    tint: 'pink',
+    icon: VoiceInterviewIcon,
     title: 'Voice-First Experience',
-    description: 'Natural, real-time conversation with AI',
+    description: 'Natural, spoken conversation with AI',
   },
 ]
 
-const TINT_CLASSES = {
-  mint: 'bg-tint-mint-light text-tint-mint',
-  purple: 'bg-tint-purple-light text-tint-purple',
-  peach: 'bg-tint-peach-light text-tint-peach',
-  pink: 'bg-tint-pink-light text-tint-pink',
-}
-
+// On short desktop viewports this secondary list (it restates the
+// Landing page's claims) steps aside so the page itself never scrolls;
+// the role list, preview and Start Interview always stay.
 function SetupFeatureList() {
   return (
-    <div className="mx-auto flex w-full max-w-[360px] flex-col gap-1 rounded-2xl border border-glass/70 bg-glass/60 p-3 shadow-glass-sm">
-      {FEATURES.map((feature) => (
-        <div key={feature.title} className="flex items-center gap-2.5 py-1.5">
-          <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${TINT_CLASSES[feature.tint]}`}>
-            <feature.icon className="h-3.5 w-3.5" strokeWidth={1.75} />
-          </span>
+    <ul className="mx-auto flex w-full max-w-[360px] xl:max-w-none flex-col gap-0.5 rounded-[var(--radius-card)] border border-glass/70 bg-glass/60 px-3 py-2 shadow-glass-sm lg:[@media(max-height:790px)]:hidden">
+      {FEATURES.map(({ icon: Icon, title, description }) => (
+        <li key={title} className="flex items-center gap-3 py-1 2xl:py-2">
+          <Icon className="h-4.5 w-4.5 shrink-0 text-primary 2xl:h-5 2xl:w-5" />
           <span className="min-w-0">
-            <span className="block truncate text-xs font-semibold text-ink">{feature.title}</span>
-            <span className="block truncate text-[11px] leading-tight text-muted">{feature.description}</span>
+            <span className="block truncate text-xs font-semibold text-ink 2xl:text-sm">{title}</span>
+            <span className="block truncate text-[11px] leading-tight text-muted 2xl:text-xs">{description}</span>
           </span>
-        </div>
+        </li>
       ))}
-    </div>
+    </ul>
   )
 }
 

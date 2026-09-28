@@ -11,7 +11,7 @@ function RoleCard({ icon: Icon, label, description, selected, onClick, className
       type="button"
       aria-pressed={selected}
       onClick={onClick}
-      className={`group relative flex w-full items-center gap-3 rounded-lg py-2 pl-4 pr-3 text-left transition-colors duration-150 ${
+      className={`group relative flex w-full items-center gap-3.5 rounded-lg py-2 pl-4 pr-3 text-left transition-colors duration-150 ${
         selected ? 'bg-primary-light/35' : 'hover:bg-glass/60'
       } ${className}`}
     >
@@ -21,21 +21,17 @@ function RoleCard({ icon: Icon, label, description, selected, onClick, className
           selected ? 'opacity-100' : 'opacity-0'
         }`}
       />
-      <span
-        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors duration-150 ${
-          selected ? 'border-primary/30 bg-glass text-primary' : 'border-line bg-glass/70 text-primary/80'
-        }`}
-      >
-        <Icon className="h-4 w-4" strokeWidth={1.75} />
-      </span>
+      <Icon
+        className={`h-5 w-5 shrink-0 transition-colors duration-150 2xl:h-6 2xl:w-6 ${selected ? 'text-primary' : 'text-muted group-hover:text-ink/70'}`}
+      />
       <span className="min-w-0 flex-1">
         {/* The role name always wraps rather than truncating, even at the
             narrowest widths — only the (already short) descriptor gives up
             space first, hidden below `sm` and truncated above it. */}
-        <span className={`block text-sm font-semibold leading-snug ${selected ? 'text-primary' : 'text-ink'}`}>
+        <span className={`block text-[15px] font-semibold leading-snug 2xl:text-base ${selected ? 'text-primary' : 'text-ink'}`}>
           {label}
         </span>
-        <span className="hidden truncate text-[11px] leading-tight text-muted sm:block">{description}</span>
+        <span className="hidden truncate text-[11px] leading-tight text-muted sm:block 2xl:text-[13px]">{description}</span>
       </span>
       <ChevronRight
         className={`h-4 w-4 shrink-0 transition-all duration-150 ${

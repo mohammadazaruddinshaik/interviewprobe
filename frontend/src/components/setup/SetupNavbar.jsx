@@ -1,6 +1,7 @@
 import { Moon, Sun } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useTheme } from '../../hooks/useTheme.js'
+import BrandLogo from '../ui/BrandLogo.jsx'
 
 // Deliberately minimal: the reference shows a full marketing nav (Home /
 // Practice / Interview / Analytics / Resources), but this app only has one
@@ -16,7 +17,7 @@ function SetupNavbar() {
     <header className="px-4 pt-3 sm:px-6 lg:px-10">
       <div className="flex h-11 items-center justify-between gap-3">
         <Link to="/" className="flex shrink-0 items-center">
-          <img src="/assets/brand/logo.svg" alt="InterviewProbe" className="h-6 w-auto sm:h-7" />
+          <BrandLogo />
         </Link>
 
         <div className="flex items-center gap-2">

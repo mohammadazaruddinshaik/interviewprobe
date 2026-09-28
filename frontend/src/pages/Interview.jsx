@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ApiError } from '../api/client.js'
-import { getInterview, startInterview, submitInterviewAnswer } from '../api/interviews.js'
+import { completeInterview, getInterview, startInterview, submitInterviewAnswer } from '../api/interviews.js'
 import InterviewComplete from '../components/interview/InterviewComplete.jsx'
 import InterviewError from '../components/interview/InterviewError.jsx'
 import InterviewLoading from '../components/interview/InterviewLoading.jsx'
@@ -13,6 +13,7 @@ import { VOICE_STATUS } from '../voice/voiceState.js'
 
 const GENERIC_LOAD_ERROR = 'Something went wrong while loading your interview.'
 const GENERIC_SUBMIT_ERROR = 'Something went wrong while submitting your answer.'
+const GENERIC_END_ERROR = 'Something went wrong while ending your interview.'
 
 function Interview() {
   const { sessionId } = useParams()
@@ -34,6 +35,7 @@ function Interview() {
   // finish-then-submit window (both this wait and the actual API call) for
   // the button's busy state.
   const [awaitingFinish, setAwaitingFinish] = useState(null)
+  const [isEnding, setIsEnding] = useState(false)
 
   // Tracks the idempotency key for the *current* answer attempt: reused
   // across retries of the same unsubmitted answer text, replaced with a
@@ -89,6 +91,12 @@ function Interview() {
           role: interview.role,
           difficulty: interview.difficulty,
           questionLimit: interview.question_limit,
+          // Snapshot at load time: how many answers were already given
+          // before this page loaded (e.g. on a refresh/resume). Those turns
+          // are persisted server-side but not returned by GET
+          // /interviews/{id}, so the local transcript can't show them —
+          // the transcript panel uses this only to disclose that gap.
+          questionsAnsweredAtLoad: interview.questions_answered ?? 0,
         })
 
         if (interview.status === 'COMPLETED') {
@@ -247,6 +255,28 @@ function Interview() {
     setRetryCount((count) => count + 1)
   }
 
+  // The candidate's explicit "end this interview now" — the existing
+  // POST /interviews/{id}/complete endpoint, never a second completion
+  // mechanism. Refused while an answer submission is in flight (both would
+  // contend for the same per-interview lock). The current draft answer is
+  // deliberately NOT submitted first: ending means ending, and the confirm
+  // step in the navbar says so. On success, moving to 'completed' makes
+  // the voice session inactive, which stops any in-flight speech/listening
+  // (see useVoiceInterviewSession's active=false effect).
+  async function handleEndInterview() {
+    if (isEnding || isSubmitting) return
+    setIsEnding(true)
+    setSubmitError(null)
+    try {
+      await completeInterview(sessionId)
+      setPhase('completed')
+    } catch (error) {
+      setSubmitError(error instanceof ApiError ? error.message : GENERIC_END_ERROR)
+    } finally {
+      setIsEnding(false)
+    }
+  }
+
   if (phase === 'loading') {
     return (
       <InterviewShell>
@@ -290,27 +320,20 @@ function Interview() {
   // renders its own InterviewShell (it also owns the navbar/room layout),
   // so this phase doesn't wrap it in a second one.
   return (
-    <>
-      <VoiceInterviewView
-        voice={voice}
-        question={question}
-        roleLabel={ROLE_LABELS[sessionMeta?.role] ?? sessionMeta?.role}
-        answer={answer}
-        onAnswerChange={setAnswer}
-        onSubmit={handleFinishAnswer}
-        submitting={isSubmitting}
-        headingRef={questionHeadingRef}
-        transcript={transcript}
-      />
-
-      {submitError && (
-        <div className="mx-auto max-w-3xl px-6 pb-12 sm:px-8">
-          <p role="alert" aria-live="assertive" className="text-center text-sm text-error">
-            {submitError}
-          </p>
-        </div>
-      )}
-    </>
+    <VoiceInterviewView
+      voice={voice}
+      question={question}
+      roleLabel={ROLE_LABELS[sessionMeta?.role] ?? sessionMeta?.role}
+      answer={answer}
+      onSubmit={handleFinishAnswer}
+      submitting={isSubmitting}
+      headingRef={questionHeadingRef}
+      transcript={transcript}
+      earlierAnswersCount={sessionMeta?.questionsAnsweredAtLoad ?? 0}
+      onEndInterview={handleEndInterview}
+      ending={isEnding}
+      submitError={submitError}
+    />
   )
 }
 

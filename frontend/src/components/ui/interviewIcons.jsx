@@ -1,12 +1,15 @@
-import { CoffeeIcon, LayoutIcon, ServerIcon } from './icons.jsx'
-
-// InterviewProbe's own icon family — used for every feature/concept/role
-// glyph across the Landing and Setup pages, instead of generic Lucide
-// icons. Shares one visual grammar: 24x24 viewBox, rounded stroke
-// (1.75-2), rounded caps/joins, compact geometric construction, no
-// gradients/3D/emoji. Lucide is still used elsewhere for plain utility
-// controls (menu, close, arrows, mic/camera toggle buttons, theme, etc.)
-// — this file is only for the identity-carrying concept/role icons.
+// InterviewProbe's own icon family — the glyphs that carry product
+// meaning (AI interviewer, voice, adaptive questioning, evaluation, roles,
+// questions, results). Lucide stays for plain utility controls only
+// (menu, close, arrows, chevrons, theme, playback).
+//
+// One grammar, applied to every glyph:
+// - 24×24 grid, content kept inside a 3–21 live area
+// - 1.75 stroke, round caps and joins, no fills except the signal dot
+// - containers are rounded rects (rx 4–5) or circles, never sharp boxes
+// - the "signal dot": one small filled circle (r 1.3) marking the active
+//   or intelligent part of the concept, so the family reads as related
+// - no gradients, no emoji, no sparkles
 function base(props) {
   return {
     xmlns: 'http://www.w3.org/2000/svg',
@@ -21,101 +24,166 @@ function base(props) {
   }
 }
 
-// 1. AI Interview / AI Engineer — a rounded chip housing a small neural
-// triad, standing in for "an intelligent interviewer" without a literal
-// brain or robot illustration.
-export function NeuralChipIcon({ className }) {
+function Dot({ cx, cy }) {
+  return <circle cx={cx} cy={cy} r="1.3" fill="currentColor" stroke="none" />
+}
+
+// The interviewer — InterviewProbe's primary mark for "AI interviewer".
+// A person (head + shoulders) with two speech-signal arcs: someone asking
+// you a question out loud. Deliberately not a chip, robot, brain, or
+// sparkle: the product is an interview, and the AI shows up as an
+// interviewer who speaks, not as a piece of hardware.
+export function InterviewerIcon({ className }) {
   return (
     <svg {...base({ className })}>
-      <rect x="4" y="4" width="16" height="16" rx="5" />
-      <path d="M9.7 10.2l1.7 3.6M14.3 10.2l-1.7 3.6M10.2 9.3h3.6" />
-      <circle cx="9" cy="9.3" r="1.3" fill="currentColor" stroke="none" />
-      <circle cx="15" cy="9.3" r="1.3" fill="currentColor" stroke="none" />
-      <circle cx="12" cy="15.3" r="1.3" fill="currentColor" stroke="none" />
+      <circle cx="9" cy="8" r="3.25" />
+      <path d="M3.5 19.5c.7-3.3 2.8-5.25 5.5-5.25s4.8 1.95 5.5 5.25" />
+      <path d="M16 6.2a3.6 3.6 0 0 1 0 5.6" />
+      <path d="M18.6 4a7 7 0 0 1 0 10" />
     </svg>
   )
 }
 
-// 2. Adaptive Interview — a conversation bubble with a forked path inside,
-// standing in for the interviewer branching into a follow-up, a deeper
-// question, or a new topic based on the candidate's answer.
+// Adaptive questioning — a conversation bubble whose path forks inside:
+// the interviewer branching based on the answer.
 export function AdaptiveIcon({ className }) {
   return (
     <svg {...base({ className })}>
-      <path d="M4 7.5A3.5 3.5 0 0 1 7.5 4h9A3.5 3.5 0 0 1 20 7.5v6A3.5 3.5 0 0 1 16.5 17H10l-4 3.5V17h-.5A3.5 3.5 0 0 1 4 13.5v-6z" />
-      <path d="M9.5 11h1.8" />
-      <path d="M11.3 11l2.6-2.3" />
-      <path d="M11.3 11l2.6 2.3" />
+      <path d="M4 8a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v5a4 4 0 0 1-4 4h-5.5L6 20.5V17a2 2 0 0 1-2-2z" />
+      <path d="M8.5 10.5h2.8l2.7-2.2M11.3 10.5l2.7 2.2" />
+      <Dot cx="15.4" cy="8" />
     </svg>
   )
 }
 
-// 5. Role-specific Interview — an identity badge with a compact figure,
-// standing in for "tailored to your role" without a generic briefcase.
+// Voice — a conversation bubble carrying a waveform: speaking with the
+// interviewer, not just "a microphone".
+export function VoiceInterviewIcon({ className }) {
+  return (
+    <svg {...base({ className })}>
+      <path d="M4 8a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v5a4 4 0 0 1-4 4h-5.5L6 20.5V17a2 2 0 0 1-2-2z" />
+      <path d="M8.5 9.3v2.4M10.8 7.9v5.2M13.1 9v3M15.4 10v1" />
+    </svg>
+  )
+}
+
+// Role — an identity badge with a person above a small code mark: the
+// candidate in a technical context.
 export function RoleBadgeIcon({ className }) {
   return (
     <svg {...base({ className })}>
       <rect x="5" y="3" width="14" height="18" rx="4.5" />
-      <circle cx="12" cy="9.3" r="2.3" />
-      <path d="M7.8 16.2c0-2.3 1.9-3.7 4.2-3.7s4.2 1.4 4.2 3.7" />
+      <circle cx="12" cy="8.8" r="2.2" />
+      <path d="M8.2 15.3c.9-1.6 2.2-2.4 3.8-2.4s2.9.8 3.8 2.4" />
+      <path d="M10.4 18l-.9-.6.9-.6M13.6 16.8l.9.6-.9.6" />
     </svg>
   )
 }
 
-// 7. Question / Deep Dive — a target with an arrow drilling through its
-// center, standing in for probing deeper into a specific topic.
-export function DeepDiveIcon({ className }) {
+// Multiple roles — two offset badges: one product, many role tracks.
+export function RolesIcon({ className }) {
   return (
     <svg {...base({ className })}>
-      <circle cx="12" cy="10" r="7" />
-      <circle cx="12" cy="10" r="3.1" />
-      <path d="M12 17.5v4" />
-      <path d="M9.6 19.6L12 21.5l2.4-1.9" />
+      <rect x="3.5" y="6" width="11" height="14" rx="3.5" />
+      <path d="M9 3.5h7.5A3.5 3.5 0 0 1 20 7v9.5" />
+      <circle cx="9" cy="11" r="1.9" />
+      <path d="M6.2 16.6c.6-1.2 1.6-1.8 2.8-1.8s2.2.6 2.8 1.8" />
     </svg>
   )
 }
 
-// 9. Real Interview Simulation — two overlapping video tiles (interviewer +
-// candidate) with a small live-pulse dot, standing in for a real video-call
-// style session rather than a static form.
+// Question — a conversation bubble with a question mark.
+export function QuestionIcon({ className }) {
+  return (
+    <svg {...base({ className })}>
+      <path d="M4 8a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v5a4 4 0 0 1-4 4h-5.5L6 20.5V17a2 2 0 0 1-2-2z" />
+      <path d="M10 8.7a2 2 0 1 1 2.6 1.9c-.4.1-.6.5-.6.9v.2" />
+      <Dot cx="12" cy="14" />
+    </svg>
+  )
+}
+
+// Real interview simulation — two overlapping video tiles (interviewer +
+// candidate) with a live dot.
 export function SimulationIcon({ className }) {
   return (
     <svg {...base({ className })}>
-      <rect x="3" y="5.5" width="12" height="10" rx="2.5" />
-      <rect x="11.5" y="9.5" width="9" height="9" rx="2.5" fill="none" />
-      <circle cx="18" cy="9.2" r="1.3" fill="currentColor" stroke="none" />
+      <rect x="3" y="5.5" width="12" height="10" rx="3" />
+      <rect x="11.5" y="9.5" width="9" height="9" rx="3" />
+      <Dot cx="18" cy="6.5" />
     </svg>
   )
 }
 
-// 4. Evaluation / Feedback — a report card with an ascending checkpoint
-// line, standing in for structured, scored feedback rather than a plain
-// bar chart.
+// Evaluation / feedback — a report card with an ascending checkpoint line.
 export function EvaluationIcon({ className }) {
   return (
     <svg {...base({ className })}>
-      <rect x="4" y="4" width="16" height="16" rx="3.5" />
-      <path d="M7.5 14.5l2.6-3 2 2 4.4-5" />
-      <circle cx="16.5" cy="8.5" r="1.3" fill="currentColor" stroke="none" />
+      <rect x="4" y="4" width="16" height="16" rx="4" />
+      <path d="M7.5 14.5l2.6-3 2 2 4-4.5" />
+      <Dot cx="16.5" cy="8.5" />
     </svg>
   )
 }
 
-// Frontend Developer — a browser/app frame with a small filled cursor,
-// standing in for building and interacting with interfaces.
+// Results — a score ring with its signal dot at the arc's end: a single,
+// measured outcome.
+export function ResultsIcon({ className }) {
+  return (
+    <svg {...base({ className })}>
+      <path d="M12 3.5a8.5 8.5 0 1 1-7.4 4.3" />
+      <path d="M9 12.2l2 2 4-4.4" />
+      <Dot cx="4.6" cy="7.8" />
+    </svg>
+  )
+}
+
+// Interview analytics — a gauge with a needle: a multi-metric read-out.
+export function AnalyticsIcon({ className }) {
+  return (
+    <svg {...base({ className })}>
+      <path d="M4.5 16a7.5 7.5 0 1 1 15 0" />
+      <path d="M12 16l3.2-3.6" />
+      <Dot cx="12" cy="16" />
+    </svg>
+  )
+}
+
+// Learning / improvement — a rising path with a milestone at its end.
+export function LearningIcon({ className }) {
+  return (
+    <svg {...base({ className })}>
+      <path d="M4 17.5l4.3-4.3 3 3L18 9.5" />
+      <path d="M13.8 9.5H18v4.2" />
+    </svg>
+  )
+}
+
+// AI engineer (role) — three connected model nodes: the role's subject
+// matter (building AI systems), not the product's own AI identity.
+export function AIEngineerRoleIcon({ className }) {
+  return (
+    <svg {...base({ className })}>
+      <circle cx="6.5" cy="7" r="2.5" />
+      <circle cx="17.5" cy="7" r="2.5" />
+      <circle cx="12" cy="17" r="2.5" />
+      <path d="M9 7h6M7.8 9.2l3 5.6M16.2 9.2l-3 5.6" />
+    </svg>
+  )
+}
+
+// Frontend developer — an app frame with a cursor.
 export function InterfaceIcon({ className }) {
   return (
     <svg {...base({ className })}>
-      <rect x="3.5" y="4.5" width="17" height="15" rx="3" />
+      <rect x="3.5" y="4.5" width="17" height="15" rx="4" />
       <path d="M3.5 9h17" />
       <path d="M13 12.7l4.3 1.8-1.9.7-.7 1.9z" fill="currentColor" stroke="none" />
     </svg>
   )
 }
 
-// SDE / Software Development Engineer — a hexagonal frame (systems /
-// engineering) with a compact code mark inside, standing in for
-// general-purpose software engineering rather than a literal gear.
+// Software engineering — a hexagonal system frame with a code mark.
 export function EngineeringIcon({ className }) {
   return (
     <svg {...base({ className })}>
@@ -126,60 +194,37 @@ export function EngineeringIcon({ className }) {
   )
 }
 
-// 3. Voice Interview — a mic capsule with sound waves on one side only
-// (never both, symmetrically) — a deliberately asymmetric mark so it
-// reads as distinctly InterviewProbe's rather than a stock mic glyph.
-export function VoiceInterviewIcon({ className }) {
+// Backend developer — two stacked service units with status dots.
+export function BackendRoleIcon({ className }) {
   return (
     <svg {...base({ className })}>
-      <rect x="7" y="3.5" width="6" height="9.5" rx="3" />
-      <path d="M5 10.5a5 5 0 0 0 5 5" />
-      <path d="M10 18v2.5" />
-      <path d="M15 8a3.2 3.2 0 0 1 0 5" />
-      <path d="M17.8 6.3a6 6 0 0 1 0 8.4" />
+      <rect x="3.5" y="4" width="17" height="7" rx="3" />
+      <rect x="3.5" y="13" width="17" height="7" rx="3" />
+      <Dot cx="7.5" cy="7.5" />
+      <Dot cx="7.5" cy="16.5" />
+      <path d="M11.5 7.5h5M11.5 16.5h5" />
     </svg>
   )
 }
 
-// 10. Technical Interview — a terminal window with a command prompt
-// caret, standing in for hands-on technical practice rather than plain
-// angle brackets.
-export function TechnicalInterviewIcon({ className }) {
+// Java developer — a cup with rising steam.
+export function JavaRoleIcon({ className }) {
   return (
     <svg {...base({ className })}>
-      <rect x="3" y="5" width="18" height="14" rx="2.5" />
-      <path d="M7 10l3 2-3 2" />
-      <path d="M13 14.3h4" />
+      <path d="M4.5 9h12v4.5a5 5 0 0 1-5 5h-2a5 5 0 0 1-5-5z" />
+      <path d="M16.5 10h1.2a2.3 2.3 0 0 1 0 4.6h-1.4" />
+      <path d="M8.5 3.8c-.5.7-.5 1.4 0 2.1M12.5 3.8c-.5.7-.5 1.4 0 2.1" />
     </svg>
   )
 }
 
-// 8. Learning / Improvement — a rising path with a milestone marker at
-// its end, standing in for measurable progress rather than a static book.
-export function LearningIcon({ className }) {
+// Full stack developer — a layered panel: interface over services.
+export function FullStackRoleIcon({ className }) {
   return (
     <svg {...base({ className })}>
-      <path d="M4 17.5l4.3-4.3 3 3L18 9.5" />
-      <path d="M13.8 9.5h4.2v4.2" />
+      <rect x="3.5" y="4" width="17" height="16" rx="4" />
+      <path d="M3.5 9.5h17M9.5 9.5V20" />
+      <Dot cx="7" cy="6.8" />
     </svg>
   )
 }
-
-// 6. Interview Analytics — a gauge/dial with a needle, standing in for a
-// multi-metric read-out rather than a plain bar chart.
-export function AnalyticsIcon({ className }) {
-  return (
-    <svg {...base({ className })}>
-      <path d="M4.5 16a7.5 7.5 0 1 1 15 0" />
-      <path d="M12 16l3.2-3.6" />
-      <circle cx="12" cy="16" r="1.3" fill="currentColor" stroke="none" />
-    </svg>
-  )
-}
-
-// Role tile icons that reuse an existing custom glyph under a
-// role-semantic name (Backend's stacked-system bars, Java's cup mark, and
-// Full Stack's layered panel already fit their role one-to-one).
-export const BackendRoleIcon = ServerIcon
-export const JavaRoleIcon = CoffeeIcon
-export const FullStackRoleIcon = LayoutIcon

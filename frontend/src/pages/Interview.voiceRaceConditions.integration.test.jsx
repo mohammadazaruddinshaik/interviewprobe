@@ -141,7 +141,7 @@ describe('voice race conditions (real hook + real reducer, faked providers)', ()
     sttCallbacks.onStart()
     sttCallbacks.onFinal('Redis uses SETNX with a TTL for the lock,')
 
-    await waitFor(() => expect(screen.getByLabelText('Your answer').value).toBe('Redis uses SETNX with a TTL for the lock,'))
+    await waitFor(() => expect(screen.getByLabelText('Your answer').textContent).toBe('Redis uses SETNX with a TTL for the lock,'))
 
     // Recognition fails mid-response (e.g. a dropped connection). Fired
     // directly on the callback (not via fireEvent), so — same as the
@@ -153,7 +153,7 @@ describe('voice race conditions (real hook + real reducer, faked providers)', ()
     const alert = await screen.findByRole('alert')
     expect(alert.textContent).toContain('The voice input connection was lost. Please try again.')
     // The already-accumulated transcript must survive the error untouched.
-    expect(screen.getByLabelText('Your answer').value).toBe('Redis uses SETNX with a TTL for the lock,')
+    expect(screen.getByLabelText('Your answer').textContent).toBe('Redis uses SETNX with a TTL for the lock,')
     // No automatic submission from an STT error.
     expect(submitInterviewAnswer).not.toHaveBeenCalled()
     const dismissButton = screen.getByRole('button', { name: 'Dismiss' })

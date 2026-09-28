@@ -9,7 +9,7 @@
 // voice-specific behaviors (TTS/STT sequencing, transcripts, races) are
 // covered separately in Interview.remoteStt.integration.test.jsx and
 // Interview.voiceRaceConditions.integration.test.jsx.
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { fireEvent } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -19,12 +19,13 @@ vi.mock('../api/interviews.js', () => ({
   getInterview: vi.fn(),
   startInterview: vi.fn(),
   submitInterviewAnswer: vi.fn(),
+  completeInterview: vi.fn(),
 }))
 vi.mock('../voice/useVoiceInterviewSession.js', () => ({
   useVoiceInterviewSession: vi.fn(),
 }))
 
-import { getInterview, startInterview, submitInterviewAnswer } from '../api/interviews.js'
+import { completeInterview, getInterview, startInterview, submitInterviewAnswer } from '../api/interviews.js'
 import { useVoiceInterviewSession } from '../voice/useVoiceInterviewSession.js'
 import { ApiError } from '../api/client.js'
 import Interview from './Interview.jsx'
@@ -60,6 +61,17 @@ function mockVoiceSession() {
       clearError: vi.fn(),
     },
   })
+}
+
+// The room has no typed-answer UI — voice is the only way `answer` ever
+// gets text. This calls the exact same `onTranscript` callback Interview.jsx
+// passes into the (mocked) voice hook, i.e. the real
+// handleVoiceTranscript -> setAnswer path a real Deepgram/remote-STT final
+// transcript would take; it's just invoked directly here since this file
+// mocks the whole voice hook rather than a speech provider underneath it.
+function deliverTranscript(text) {
+  const { onTranscript } = useVoiceInterviewSession.mock.calls.at(-1)[0]
+  act(() => onTranscript(text))
 }
 
 function renderInterview(sessionId = 'session-1') {
@@ -316,13 +328,13 @@ describe('Interview.jsx lifecycle', () => {
     await waitFor(() => expect(screen.getByText('Explain RAG.')).toBeTruthy())
   }
 
-  it('disables submit until an answer is entered, and enables it once text is typed', async () => {
+  it('disables submit until an answer is captured, and enables it once voice delivers text', async () => {
     await renderReadyInterview()
 
     const submitButton = screen.getByRole('button', { name: SUBMIT_LABEL })
     expect(submitButton).toHaveProperty('disabled', true)
 
-    fireEvent.change(screen.getByLabelText(ANSWER_LABEL), { target: { value: 'RAG grounds generation in retrieval.' } })
+    deliverTranscript('RAG grounds generation in retrieval.')
 
     expect(submitButton).toHaveProperty('disabled', false)
   })
@@ -330,14 +342,14 @@ describe('Interview.jsx lifecycle', () => {
   it('a whitespace-only answer does not enable submit', async () => {
     await renderReadyInterview()
 
-    fireEvent.change(screen.getByLabelText(ANSWER_LABEL), { target: { value: '   ' } })
+    deliverTranscript('   ')
 
     expect(screen.getByRole('button', { name: SUBMIT_LABEL })).toHaveProperty('disabled', true)
   })
 
   it('shows the loading/busy submit state while the request is in flight, then the next question', async () => {
     await renderReadyInterview()
-    fireEvent.change(screen.getByLabelText(ANSWER_LABEL), { target: { value: 'RAG grounds generation in retrieval.' } })
+    deliverTranscript('RAG grounds generation in retrieval.')
 
     const { promise, resolve } = deferred()
     submitInterviewAnswer.mockReturnValue(promise)
@@ -356,13 +368,13 @@ describe('Interview.jsx lifecycle', () => {
     await waitFor(() => expect(screen.getByText('How would you rerank results?')).toBeTruthy())
     // The answer box is cleared for the next question, and submit is
     // disabled again until new text is entered.
-    expect(screen.getByLabelText(ANSWER_LABEL)).toHaveProperty('value', '')
+    expect(screen.getByLabelText(ANSWER_LABEL)).toHaveProperty('textContent', '')
     expect(screen.getByRole('button', { name: SUBMIT_LABEL })).toHaveProperty('disabled', true)
   })
 
   it('submits with the question id, trimmed answer, and an idempotency key', async () => {
     await renderReadyInterview()
-    fireEvent.change(screen.getByLabelText(ANSWER_LABEL), { target: { value: '  RAG grounds generation.  ' } })
+    deliverTranscript('  RAG grounds generation.  ')
     submitInterviewAnswer.mockResolvedValue({
       status: 'IN_PROGRESS',
       question: { id: 'q2', sequence: 2, text: 'Next question.', topic: 'RAG' },
@@ -381,7 +393,7 @@ describe('Interview.jsx lifecycle', () => {
 
   it('transitions to the completed view when submitting the final answer returns no next question', async () => {
     await renderReadyInterview()
-    fireEvent.change(screen.getByLabelText(ANSWER_LABEL), { target: { value: 'Final answer.' } })
+    deliverTranscript('Final answer.')
     submitInterviewAnswer.mockResolvedValue({ status: 'COMPLETED', action: 'END', question: null })
 
     fireEvent.click(screen.getByRole('button', { name: SUBMIT_LABEL }))
@@ -389,9 +401,9 @@ describe('Interview.jsx lifecycle', () => {
     await waitFor(() => expect(screen.getByText('Interview complete.')).toBeTruthy())
   })
 
-  it('shows a submit error, keeps the typed answer, and re-enables the submit button', async () => {
+  it('shows a submit error, keeps the captured answer, and re-enables the submit button', async () => {
     await renderReadyInterview()
-    fireEvent.change(screen.getByLabelText(ANSWER_LABEL), { target: { value: 'My answer.' } })
+    deliverTranscript('My answer.')
     submitInterviewAnswer.mockRejectedValueOnce(new ApiError('Too many answer submissions. Please try again shortly.', { status: 429 }))
 
     fireEvent.click(screen.getByRole('button', { name: SUBMIT_LABEL }))
@@ -403,13 +415,13 @@ describe('Interview.jsx lifecycle', () => {
       ),
     )
     // The candidate's work is not lost, and they can retry.
-    expect(screen.getByLabelText(ANSWER_LABEL)).toHaveProperty('value', 'My answer.')
+    expect(screen.getByLabelText(ANSWER_LABEL)).toHaveProperty('textContent', 'My answer.')
     expect(screen.getByRole('button', { name: SUBMIT_LABEL })).toHaveProperty('disabled', false)
   })
 
   it('falls back to a generic message for a non-ApiError submit failure', async () => {
     await renderReadyInterview()
-    fireEvent.change(screen.getByLabelText(ANSWER_LABEL), { target: { value: 'My answer.' } })
+    deliverTranscript('My answer.')
     submitInterviewAnswer.mockRejectedValueOnce(new Error('network down'))
 
     fireEvent.click(screen.getByRole('button', { name: SUBMIT_LABEL }))
@@ -437,5 +449,98 @@ describe('Interview.jsx lifecycle', () => {
     // No text/voice mode toggle or "switch to text" escape hatch exists.
     expect(screen.queryByRole('button', { name: /voice mode/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /switch to text/i })).toBeNull()
+
+    // No answer-editing control of any kind — the room has no textarea,
+    // no text input, and no "Type instead…" affordance anywhere.
+    expect(screen.queryByRole('textbox')).toBeNull()
+    expect(document.querySelector('textarea')).toBeNull()
+    expect(document.querySelector('input[type="text"]')).toBeNull()
+    expect(screen.queryByText(/type instead/i)).toBeNull()
+  })
+
+  // -------------------------------------------------------------------
+  // End Interview — the existing POST /interviews/{id}/complete flow
+  // -------------------------------------------------------------------
+
+  it('on resume, discloses earlier answers the API does not return instead of implying none happened', async () => {
+    getInterview.mockResolvedValue({
+      status: 'IN_PROGRESS',
+      role: 'AI_ENGINEER',
+      difficulty: 'MEDIUM',
+      question_limit: 5,
+      questions_answered: 2,
+      current_question: { id: 'q3', sequence: 3, text: 'Design a rate limiter.', topic: 'SYSTEM_DESIGN' },
+    })
+
+    renderInterview()
+
+    await waitFor(() => expect(screen.getByText('Design a rate limiter.')).toBeTruthy())
+    expect(screen.getByText('2 earlier answers are saved but not shown here after reloading.')).toBeTruthy()
+    expect(startInterview).not.toHaveBeenCalled()
+  })
+
+  it('never completes the interview just by rendering the room', async () => {
+    await renderReadyInterview()
+    expect(completeInterview).not.toHaveBeenCalled()
+  })
+
+  it('asks for confirmation first, and cancelling does not complete the interview', async () => {
+    await renderReadyInterview()
+
+    fireEvent.click(screen.getByRole('button', { name: 'End Interview' }))
+    expect(screen.getByRole('dialog', { name: 'Confirm ending the interview' })).toBeTruthy()
+    expect(completeInterview).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Keep going' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(completeInterview).not.toHaveBeenCalled()
+  })
+
+  it('confirming calls the existing completion endpoint once and reaches the completed state', async () => {
+    await renderReadyInterview()
+    completeInterview.mockResolvedValue({ session_id: 'session-1', status: 'COMPLETED', evaluation_status: 'NOT_STARTED' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'End Interview' }))
+    fireEvent.click(screen.getByRole('button', { name: 'End interview' }))
+
+    await waitFor(() => expect(screen.getByText('Interview complete.')).toBeTruthy())
+    expect(completeInterview).toHaveBeenCalledOnce()
+    expect(completeInterview).toHaveBeenCalledWith('session-1')
+    // Ending never submits the in-progress draft answer.
+    expect(submitInterviewAnswer).not.toHaveBeenCalled()
+    expect(screen.getByRole('link', { name: /View results/ })).toHaveProperty(
+      'href',
+      expect.stringContaining('/interview/session-1/result'),
+    )
+  })
+
+  it('surfaces a completion failure and keeps the candidate in the room', async () => {
+    await renderReadyInterview()
+    completeInterview.mockRejectedValueOnce(
+      new ApiError('This interview is currently being updated. Please retry.', { status: 409 }),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'End Interview' }))
+    fireEvent.click(screen.getByRole('button', { name: 'End interview' }))
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveProperty(
+        'textContent',
+        'This interview is currently being updated. Please retry.',
+      ),
+    )
+    expect(screen.getByText('Explain RAG.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'End Interview' })).toHaveProperty('disabled', false)
+  })
+
+  it('disables End Interview while an answer submission is in flight', async () => {
+    await renderReadyInterview()
+    const { promise } = deferred()
+    submitInterviewAnswer.mockReturnValue(promise)
+
+    deliverTranscript('RAG grounds generation in retrieval.')
+    fireEvent.click(screen.getByRole('button', { name: SUBMIT_LABEL }))
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'End Interview' })).toHaveProperty('disabled', true))
   })
 })

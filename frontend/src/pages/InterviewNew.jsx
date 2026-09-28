@@ -66,16 +66,16 @@ function InterviewNew() {
           WebkitMaskImage: 'radial-gradient(circle at bottom right, black 0%, transparent 70%)',
         }}
       />
-      <div className="relative px-3 py-2.5 sm:px-5 sm:py-3 lg:px-6 lg:py-4">
+      <div className="relative px-3 py-2.5 sm:px-5 sm:py-3 lg:flex lg:min-h-svh lg:flex-col lg:px-6 lg:py-4">
         <SetupShell>
           <SetupNavbar />
 
-          <main className="px-4 pb-4 pt-3 sm:px-6 lg:px-8 lg:pb-5 lg:pt-4">
+          <main className="px-4 pb-4 pt-3 sm:px-6 lg:flex lg:flex-1 lg:flex-col lg:px-8 lg:pb-6 lg:pt-4">
             <SetupHeader />
 
-            <div className="mt-4 grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_280px] xl:grid-cols-[minmax(0,1fr)_340px]">
+            <div className="mt-4 grid grid-cols-1 gap-5 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_280px] xl:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_440px]">
               <div className="flex min-w-0 flex-col justify-between rounded-[22px] border border-glass/70 bg-glass/60 p-3 shadow-glass-sm sm:p-4 lg:p-5">
-                <div>
+                <div className="flex flex-col lg:flex-1">
                   <InterviewStepper activeStep={1} />
 
                   <p className="mb-1 mt-4 text-xs font-semibold uppercase tracking-wide text-muted">Select Role</p>
@@ -90,7 +90,7 @@ function InterviewNew() {
                     aria-busy={isSubmitting}
                     variant="primary"
                     withArrow={!isSubmitting}
-                    className="w-full justify-center bg-gradient-to-br from-[#94a1f8] to-primary py-3 text-sm shadow-[0_10px_28px_-8px_rgba(91,111,245,0.55)]"
+                    className="w-full justify-center bg-gradient-to-r from-primary to-accent-2 py-3 text-sm"
                   >
                     {isSubmitting ? 'Starting your interview…' : 'Start Interview'}
                   </Button>
@@ -102,7 +102,7 @@ function InterviewNew() {
                 </div>
               </div>
 
-              <div className="flex min-w-0 flex-col justify-between gap-3">
+              <div className="flex min-w-0 flex-col gap-4">
                 <InterviewPreview />
                 <SetupFeatureList />
               </div>

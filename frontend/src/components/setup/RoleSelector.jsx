@@ -5,7 +5,7 @@ import {
   InterfaceIcon,
   JavaRoleIcon,
   LearningIcon,
-  NeuralChipIcon,
+  AIEngineerRoleIcon,
 } from '../ui/interviewIcons.jsx'
 import RoleCard from './RoleCard.jsx'
 
@@ -13,7 +13,7 @@ import RoleCard from './RoleCard.jsx'
 // data/interviewCatalog.js's own `icon` field, keeping the mapping local
 // to the setup page.
 const ROLE_ICONS = {
-  AI_ENGINEER: NeuralChipIcon,
+  AI_ENGINEER: AIEngineerRoleIcon,
   FRONTEND_DEVELOPER: InterfaceIcon,
   BACKEND_DEVELOPER: BackendRoleIcon,
   JAVA_DEVELOPER: JavaRoleIcon,
@@ -28,11 +28,12 @@ const ROLE_ICONS = {
 // Engineer" readable without ever needing to shrink a column.
 function RoleSelector({ roles, value, onChange }) {
   return (
-    <div className="flex flex-col divide-y divide-line/70">
+    <div className="flex flex-col divide-y divide-line/70 lg:flex-1">
       {roles.map((role) => (
         <RoleCard
+          className="lg:flex-1"
           key={role.id}
-          icon={ROLE_ICONS[role.id] ?? NeuralChipIcon}
+          icon={ROLE_ICONS[role.id] ?? AIEngineerRoleIcon}
           label={role.label}
           description={role.description}
           selected={role.id === value}

@@ -1,18 +1,24 @@
+// A skeleton shaped like the real layout below it (summary + score card,
+// then breakdown, then feedback) rather than generic bars — so the page
+// doesn't visually jump once the real result arrives. Never renders a
+// placeholder score or placeholder feedback text.
+function SkeletonBlock({ className = '' }) {
+  return <div aria-hidden="true" className={`animate-pulse rounded-2xl bg-line/60 ${className}`} />
+}
+
 function ResultLoading() {
   return (
-    <div className="mx-auto max-w-3xl animate-pulse px-6 pt-20 text-center sm:px-8" aria-busy="true">
+    <div className="flex flex-col gap-5 px-4 pb-10 pt-6 sm:px-6 lg:px-8" aria-busy="true">
       <p className="sr-only" role="status">
         Loading your results…
       </p>
-      <div aria-hidden="true" className="mx-auto h-7 w-2/3 rounded-full bg-line/70" />
-      <div aria-hidden="true" className="mx-auto mt-3 h-7 w-1/2 rounded-full bg-line/70" />
-      <div aria-hidden="true" className="mx-auto mt-8 h-16 w-40 rounded-full bg-line/70" />
-      <div aria-hidden="true" className="mx-auto mt-6 h-4 w-56 rounded-full bg-line/50" />
-      <div className="mt-16 flex flex-col gap-6 text-left">
-        {[0, 1, 2, 3].map((i) => (
-          <div key={i} aria-hidden="true" className="h-6 w-full rounded-full bg-line/40" />
-        ))}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <SkeletonBlock className="h-32" />
+        <SkeletonBlock className="h-32" />
       </div>
+      <SkeletonBlock className="h-56" />
+      <SkeletonBlock className="h-64" />
+      <SkeletonBlock className="h-72" />
     </div>
   )
 }

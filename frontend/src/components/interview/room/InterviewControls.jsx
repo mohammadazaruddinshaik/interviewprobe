@@ -1,13 +1,13 @@
 import { MicIcon, SpeakerIcon, StopIcon } from '../../ui/icons.jsx'
 
-// A compact, professional floating control row. Exposes exactly the
+// A compact, meeting-style control row (no card around it). Exposes exactly the
 // existing capabilities (replay/stop the question, start/stop the mic,
 // Finish Answer) through the exact same commands useVoiceInterviewSession()
 // already provides — no new interview action, no camera/more control that
 // doesn't back a real feature. "Finish Answer" is deliberately the only
 // way an answer is ever submitted (see Interview.jsx's handleFinishAnswer)
 // — this component never submits on its own.
-function ControlButton({ active, tone = 'neutral', label, icon, disabled, title, ariaPressed, ariaBusy, onClick }) {
+function ControlButton({ active, tone = 'neutral', primary = false, label, icon, disabled, title, ariaPressed, ariaBusy, onClick }) {
   const toneClasses =
     tone === 'danger'
       ? 'border-danger/30 bg-danger text-white hover:bg-danger/90'
@@ -26,11 +26,17 @@ function ControlButton({ active, tone = 'neutral', label, icon, disabled, title,
       className="flex flex-col items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-50"
     >
       <span
-        className={`flex h-12 w-12 items-center justify-center rounded-full border shadow-glass-sm transition-colors duration-200 ${toneClasses}`}
+        className={`flex items-center justify-center rounded-full border transition-colors duration-200 ${
+          primary ? 'h-14 w-14 shadow-glass' : 'h-11 w-11 shadow-glass-sm'
+        } ${toneClasses}`}
       >
         {icon}
       </span>
-      <span className="max-w-[6.5rem] text-center text-xs font-medium leading-tight text-ink">{label}</span>
+      <span
+        className={`max-w-[5.5rem] text-center text-xs leading-tight sm:max-w-[6.5rem] lg:max-w-none lg:whitespace-nowrap lg:text-[11px] xl:text-xs ${primary ? 'font-semibold text-ink' : 'font-medium text-muted'}`}
+      >
+        {label}
+      </span>
     </button>
   )
 }
@@ -72,7 +78,7 @@ function InterviewControls({
   }
 
   return (
-    <div className="flex flex-wrap items-start justify-center gap-6 rounded-[22px] border border-glass/70 bg-glass/60 px-6 py-4 shadow-glass-sm sm:gap-8">
+    <div className="flex shrink-0 flex-wrap items-end justify-center gap-5 sm:gap-10 lg:gap-3 xl:gap-4">
       {speakerSupported ? (
         <ControlButton
           onClick={handleSpeakerClick}
@@ -96,6 +102,7 @@ function InterviewControls({
         disabled={!canSubmit}
         ariaBusy={submitting}
         tone="danger"
+        primary
         label={submitting ? 'Evaluating your answer…' : 'Finish Answer'}
         icon={<StopIcon className="h-4.5 w-4.5" />}
       />

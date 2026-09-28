@@ -93,7 +93,7 @@ describe('remote STT integration: VoiceInterviewView -> useVoiceInterviewSession
     await waitFor(() => expect(screen.getByRole('button', { name: 'Speak answer' })).toBeTruthy())
   }
 
-  it('interim and final transcripts from the remote provider reach the answer textarea, and manual submission uses the existing API', async () => {
+  it('interim and final transcripts from the remote provider reach the read-only answer display, and manual submission uses the existing API', async () => {
     await renderReadyInterview()
 
     fireEvent.click(screen.getByRole('button', { name: 'Speak answer' }))
@@ -105,10 +105,10 @@ describe('remote STT integration: VoiceInterviewView -> useVoiceInterviewSession
     callbacks.onInterim('I would first')
 
     // Interim text is not yet committed to the answer — only finals are.
-    expect(screen.getByLabelText('Your answer').value).toBe('')
+    expect(screen.getByLabelText('Your answer').textContent).toBe('')
 
     callbacks.onFinal('I would first check the lock TTL.')
-    await waitFor(() => expect(screen.getByLabelText('Your answer').value).toBe('I would first check the lock TTL.'))
+    await waitFor(() => expect(screen.getByLabelText('Your answer').textContent).toBe('I would first check the lock TTL.'))
 
     // STT never submits by itself.
     expect(submitInterviewAnswer).not.toHaveBeenCalled()
@@ -128,31 +128,20 @@ describe('remote STT integration: VoiceInterviewView -> useVoiceInterviewSession
     const callbacks = fakeStt._callbacks()
 
     callbacks.onFinal('First, I would check')
-    await waitFor(() => expect(screen.getByLabelText('Your answer').value).toBe('First, I would check'))
+    await waitFor(() => expect(screen.getByLabelText('Your answer').textContent).toBe('First, I would check'))
 
     callbacks.onFinal('the TTL on the lock key.')
     await waitFor(() =>
-      expect(screen.getByLabelText('Your answer').value).toBe('First, I would check the TTL on the lock key.'),
+      expect(screen.getByLabelText('Your answer').textContent).toBe('First, I would check the TTL on the lock key.'),
     )
   })
 
-  it('manually editing the transcript is preserved — a later final chunk appends rather than overwriting it', async () => {
-    await renderReadyInterview()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Speak answer' }))
-    const callbacks = fakeStt._callbacks()
-
-    callbacks.onFinal('Redis SETNX')
-    await waitFor(() => expect(screen.getByLabelText('Your answer').value).toBe('Redis SETNX'))
-
-    fireEvent.change(screen.getByLabelText('Your answer'), { target: { value: 'Redis SETNX with a TTL' } })
-    expect(screen.getByLabelText('Your answer').value).toBe('Redis SETNX with a TTL')
-
-    callbacks.onFinal('implements the lock.')
-    await waitFor(() =>
-      expect(screen.getByLabelText('Your answer').value).toBe('Redis SETNX with a TTL implements the lock.'),
-    )
-  })
+  // "Manually editing the transcript" is no longer a real scenario — the
+  // answer display is read-only captions now (no textarea, no typed
+  // fallback), so there is nothing for a candidate to edit. Coverage for
+  // "a later final chunk appends rather than overwrites" already exists
+  // above ('multiple final chunks within one listening session
+  // accumulate into the same answer').
 
   it('an explicit stop ends listening without submitting or fabricating an answer', async () => {
     await renderReadyInterview()
@@ -175,7 +164,7 @@ describe('remote STT integration: VoiceInterviewView -> useVoiceInterviewSession
     // the real provider's eventual settling) — no separate manual trigger
     // needed here.
 
-    expect(screen.getByLabelText('Your answer').value).toBe('')
+    expect(screen.getByLabelText('Your answer').textContent).toBe('')
     expect(submitInterviewAnswer).not.toHaveBeenCalled()
   })
 
@@ -208,14 +197,14 @@ describe('remote STT integration: VoiceInterviewView -> useVoiceInterviewSession
     const callbacks = fakeStt._callbacks()
     callbacks.onSpeechDetected()
     callbacks.onFinal('I would use Redis for caching because')
-    await waitFor(() => expect(screen.getByLabelText('Your answer').value).toBe('I would use Redis for caching because'))
+    await waitFor(() => expect(screen.getByLabelText('Your answer').textContent).toBe('I would use Redis for caching because'))
     callbacks.onSpeechEnd() // pause — must not end the attempt
 
     // "...and I would invalidate the cache when the underlying data changes."
     callbacks.onSpeechDetected()
     callbacks.onFinal('and I would invalidate the cache when the underlying data changes.')
     await waitFor(() =>
-      expect(screen.getByLabelText('Your answer').value).toBe(
+      expect(screen.getByLabelText('Your answer').textContent).toBe(
         'I would use Redis for caching because and I would invalidate the cache when the underlying data changes.',
       ),
     )
@@ -237,7 +226,7 @@ describe('remote STT integration: VoiceInterviewView -> useVoiceInterviewSession
     const callbacks = fakeStt._callbacks()
     callbacks.onSpeechDetected()
     callbacks.onFinal('Redis uses SETNX with a TTL')
-    await waitFor(() => expect(screen.getByLabelText('Your answer').value).toBe('Redis uses SETNX with a TTL'))
+    await waitFor(() => expect(screen.getByLabelText('Your answer').textContent).toBe('Redis uses SETNX with a TTL'))
 
     // Deepgram is still finishing classification of the last bit of audio
     // when Finish Answer is clicked — its trailing final for that audio
@@ -278,7 +267,7 @@ describe('remote STT integration: VoiceInterviewView -> useVoiceInterviewSession
     fireEvent.click(screen.getByRole('button', { name: 'Speak answer' }))
     const callbacks = fakeStt._callbacks()
     callbacks.onFinal('A complete answer.')
-    await waitFor(() => expect(screen.getByLabelText('Your answer').value).toBe('A complete answer.'))
+    await waitFor(() => expect(screen.getByLabelText('Your answer').textContent).toBe('A complete answer.'))
 
     const finishButton = screen.getByRole('button', { name: 'Finish Answer' })
     fireEvent.click(finishButton)
@@ -300,7 +289,7 @@ describe('remote STT integration: VoiceInterviewView -> useVoiceInterviewSession
 
     // Nothing has been finalized yet, so there is no committed answer to
     // submit — the control reflects that rather than acting on interim text.
-    expect(screen.getByLabelText('Your answer').value).toBe('')
+    expect(screen.getByLabelText('Your answer').textContent).toBe('')
     expect(screen.getByRole('button', { name: 'Finish Answer' })).toHaveProperty('disabled', true)
     expect(submitInterviewAnswer).not.toHaveBeenCalled()
   })
@@ -315,7 +304,7 @@ describe('remote STT integration: VoiceInterviewView -> useVoiceInterviewSession
     fireEvent.click(screen.getByRole('button', { name: 'Speak answer' }))
     const callbacks = fakeStt._callbacks()
     callbacks.onFinal('An answer to the first question.')
-    await waitFor(() => expect(screen.getByLabelText('Your answer').value).toBe('An answer to the first question.'))
+    await waitFor(() => expect(screen.getByLabelText('Your answer').textContent).toBe('An answer to the first question.'))
 
     fireEvent.click(screen.getByRole('button', { name: 'Finish Answer' }))
     await waitFor(() => expect(screen.getByText('A follow-up question.')).toBeTruthy())
