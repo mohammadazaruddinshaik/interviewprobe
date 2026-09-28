@@ -7,10 +7,12 @@ from sqlalchemy.orm import Session
 from app.domain.enums import InterviewTopicStatus
 from app.models.evaluation import Evaluation
 from app.models.interview_message import InterviewMessage
+from app.models.interview_plan import InterviewPlanRecord
 from app.models.interview_question import InterviewQuestion
 from app.models.interview_resume import InterviewResume
 from app.models.interview_session import InterviewSession
 from app.models.interview_topic import InterviewTopicEntry
+from app.planning.models import InterviewPlan
 
 
 class InterviewRepository:
@@ -98,6 +100,13 @@ class InterviewRepository:
     def get_topic(self, topic_id: uuid.UUID) -> InterviewTopicEntry | None:
         return self.session.get(InterviewTopicEntry, topic_id)
 
+    def delete_topics(self, session_id: uuid.UUID) -> None:
+        """Remove all topic entries for a session. Flushes only."""
+        topics = self.get_topics(session_id)
+        for topic in topics:
+            self.session.delete(topic)
+        self.session.flush()
+
     def get_current_topic(self, session_id: uuid.UUID) -> InterviewTopicEntry | None:
         stmt = select(InterviewTopicEntry).where(
             InterviewTopicEntry.session_id == session_id,
@@ -164,3 +173,46 @@ class InterviewRepository:
     def delete_resume(self, resume: InterviewResume) -> None:
         self.session.delete(resume)
         self.session.flush()
+
+    # ------------------------------------------------------------------
+    # Plan
+    # ------------------------------------------------------------------
+
+    def create_plan(
+        self, session_id: uuid.UUID, plan: InterviewPlan
+    ) -> InterviewPlanRecord:
+        """Persist a validated InterviewPlan. The role and plan_version are
+        derived from the domain plan — callers cannot supply different
+        values. Only flushes; the caller owns the transaction boundary."""
+        record = InterviewPlanRecord(
+            session_id=session_id,
+            plan_version=plan.plan_version,
+            role=plan.role,
+            plan=plan.model_dump(mode="json"),
+        )
+        self.session.add(record)
+        self.session.flush()
+        return record
+
+    def get_plan(self, session_id: uuid.UUID) -> InterviewPlanRecord | None:
+        """The most recent plan for a session (highest plan_version)."""
+        stmt = (
+            select(InterviewPlanRecord)
+            .where(InterviewPlanRecord.session_id == session_id)
+            .order_by(InterviewPlanRecord.plan_version.desc())
+            .limit(1)
+        )
+        return self.session.scalars(stmt).one_or_none()
+
+    def get_plan_by_id(self, plan_id: uuid.UUID) -> InterviewPlanRecord | None:
+        return self.session.get(InterviewPlanRecord, plan_id)
+
+    def load_plan(self, session_id: uuid.UUID) -> InterviewPlan | None:
+        """Load and reconstruct the domain InterviewPlan for a session.
+        Returns None when no plan is persisted. Raises ValidationError
+        (via Pydantic) if the persisted JSONB is structurally invalid —
+        corrupted plans do not silently become arbitrary dicts."""
+        record = self.get_plan(session_id)
+        if record is None:
+            return None
+        return InterviewPlan.model_validate(record.plan)

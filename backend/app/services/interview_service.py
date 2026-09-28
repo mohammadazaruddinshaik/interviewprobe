@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -11,6 +12,7 @@ from app.domain.enums import (
     InterviewTopicStatus,
     MessageRole,
     QuestionType,
+    ResumeExtractionStatus,
     Role,
 )
 from app.domain.roles import InvalidRoleTopicError, validate_role_topics
@@ -18,7 +20,10 @@ from app.models.interview_message import InterviewMessage
 from app.models.interview_question import InterviewQuestion
 from app.models.interview_session import InterviewSession
 from app.models.interview_topic import InterviewTopicEntry
+from app.planning.models import InterviewPlanningConstraints, build_planning_input
+from app.planning.planner import InterviewPlanner
 from app.repositories.interview_repository import InterviewRepository
+from app.resume.models import ResumeProfile
 from app.services.topic_progression_service import TopicProgressionService
 from app.workflows.interview.models import NextAction
 from app.workflows.interview.state import InterviewAgentState
@@ -30,6 +35,10 @@ if TYPE_CHECKING:
     # annotations, so a `TYPE_CHECKING`-only import breaks the cycle without
     # losing type-checking.
     from app.workflows.interview.graph import InterviewWorkflow
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_MAX_DURATION_MINUTES = 45
 
 # Maps a validated `NextAction.action` to the persisted question's
 # `QuestionType`. "END" is deliberately absent — that action never
@@ -73,7 +82,12 @@ class InterviewService:
     and rolls back on failure. Repository methods only flush.
     """
 
-    def __init__(self, repository: InterviewRepository, workflow: "InterviewWorkflow"):
+    def __init__(
+        self,
+        repository: InterviewRepository,
+        workflow: "InterviewWorkflow",
+        planner: InterviewPlanner | None = None,
+    ):
         self.repository = repository
         # Shares this service's repository (and therefore its DB session),
         # so `start_interview` can call it mid-transaction and still commit
@@ -84,6 +98,7 @@ class InterviewService:
         # never mutates PostgreSQL, Redis, or interview state itself. All
         # durable mutation below is this service's responsibility.
         self.workflow = workflow
+        self.planner = planner
 
     @property
     def _db(self) -> Session:
@@ -148,10 +163,15 @@ class InterviewService:
                     f"(current status: {session.status})."
                 )
 
-            # The persisted `interview_topics` selection (this candidate's
-            # actual choice, in their chosen order) is authoritative here —
-            # never the role catalog, and never whatever topic the LLM's
-            # `GeneratedQuestion` names below.
+            # --- Phase 3: interview planning ---
+            # The planner runs ONCE per interview at start time. An
+            # existing plan (from a prior attempt that rolled back after
+            # planning but before commit) is reused — never regenerated.
+            await self._ensure_interview_plan(session)
+
+            # The persisted `interview_topics` selection — either the
+            # candidate's original choice (pre-Phase-3 / no planner) or
+            # the plan-materialized topics — is authoritative here.
             topics = self.repository.get_topics(session_id)
             if not topics:
                 raise InvalidInterviewStateError(
@@ -375,6 +395,66 @@ class InterviewService:
         topics = self.repository.get_topics(session_id)
 
         return session, current_topic, questions_answered, topics, current_unanswered_question
+
+    # ------------------------------------------------------------------
+    # Planning
+    # ------------------------------------------------------------------
+
+    async def _ensure_interview_plan(self, session: InterviewSession) -> None:
+        """Generate and persist an interview plan if a planner is
+        configured and no plan exists yet. Materializes the plan's topics
+        into `interview_topics`, replacing the candidate's original
+        selection. A no-op when no planner is configured (backward
+        compatibility with pre-Phase-3 sessions)."""
+        if self.planner is None:
+            return
+
+        existing_plan = self.repository.load_plan(session.id)
+        if existing_plan is not None:
+            return
+
+        resume_profile = self._load_resume_profile(session.id)
+        constraints = InterviewPlanningConstraints(
+            max_duration_minutes=DEFAULT_MAX_DURATION_MINUTES,
+            difficulty=session.difficulty,
+            question_limit=session.question_limit,
+        )
+        planning_input = build_planning_input(
+            role=session.role,
+            constraints=constraints,
+            resume_profile=resume_profile,
+        )
+        plan = await self.planner.plan(planning_input)
+        self.repository.create_plan(session.id, plan)
+        self._materialize_plan_topics(session, plan)
+
+    def _load_resume_profile(self, session_id: uuid.UUID) -> ResumeProfile | None:
+        """Load a successfully extracted resume profile for planning.
+        Returns None when no resume was uploaded or extraction failed."""
+        resume = self.repository.get_resume(session_id)
+        if resume is None:
+            return None
+        if resume.extraction_status != ResumeExtractionStatus.READY:
+            return None
+        if resume.structured_profile is None:
+            return None
+        return ResumeProfile.model_validate(resume.structured_profile)
+
+    def _materialize_plan_topics(self, session: InterviewSession, plan) -> None:
+        """Replace the session's existing `interview_topics` with the
+        plan's `planned_topics`, preserving plan order as sequence
+        numbers. Only flushes — the caller owns the transaction."""
+        self.repository.delete_topics(session.id)
+        topic_entries = [
+            InterviewTopicEntry(
+                session_id=session.id,
+                topic=planned.topic,
+                sequence_number=seq,
+                status=InterviewTopicStatus.PENDING,
+            )
+            for seq, planned in enumerate(plan.planned_topics, start=1)
+        ]
+        self.repository.create_topics(topic_entries)
 
     # ------------------------------------------------------------------
     # Internal helpers

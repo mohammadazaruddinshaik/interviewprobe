@@ -24,7 +24,7 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.api.deps import get_knowledge_retrieval_service, get_llm_provider
+from app.api.deps import get_interview_planner, get_knowledge_retrieval_service, get_llm_provider
 from app.db.base import Base
 from app.db.session import get_db
 from app.domain.enums import Difficulty, InterviewTopic, QuestionType, Role
@@ -40,6 +40,7 @@ from app.llm.exceptions import (
 from app.main import app
 from app.models.interview_question import InterviewQuestion
 from app.models.interview_session import InterviewSession
+from app.planning.planner import InterviewPlanner
 from app.redis.client import get_redis_client
 from app.workflows.interview.models import AnswerAnalysis, GeneratedQuestion, NextAction
 from tests.fakes import FakeAsyncRedis, FakeLLMProvider
@@ -62,6 +63,7 @@ def build_client(
     fake_redis: FakeAsyncRedis,
     llm_provider: FakeLLMProvider,
     knowledge_service: KnowledgeRetrievalService | None = None,
+    planner: InterviewPlanner | None = None,
 ):
     """Like `test_interview_api.py`'s `client` fixture, but a plain context
     manager parameterized by the `FakeLLMProvider` this scenario needs, and
@@ -100,10 +102,14 @@ def build_client(
     def override_get_knowledge_retrieval_service():
         return knowledge_service
 
+    def override_get_interview_planner():
+        return planner
+
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_redis_client] = override_get_redis_client
     app.dependency_overrides[get_llm_provider] = override_get_llm_provider
     app.dependency_overrides[get_knowledge_retrieval_service] = override_get_knowledge_retrieval_service
+    app.dependency_overrides[get_interview_planner] = override_get_interview_planner
     try:
         with TestClient(app) as test_client:
             yield test_client, testing_session_local

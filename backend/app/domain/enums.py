@@ -99,3 +99,28 @@ class ResumeExtractionStatus(StrEnum):
     PARSING = "PARSING"
     READY = "READY"
     FAILED = "FAILED"
+
+
+class CompetencyRequirement(StrEnum):
+    """Whether a role competency (app/domain/competencies.py) is core
+    coverage for the role or may be skipped by a plan when time is short."""
+
+    REQUIRED = "REQUIRED"
+    OPTIONAL = "OPTIONAL"
+
+
+class PlannedTopicPriority(StrEnum):
+    HIGH = "HIGH"
+    MEDIUM = "MEDIUM"
+    LOW = "LOW"
+
+
+class ResumeRelevance(StrEnum):
+    """How strongly a planned topic is driven by candidate-reported resume
+    claims. PRIMARY: the topic is planned mainly to probe specific claims.
+    SUPPORTING: claims add context to a topic the role needs anyway. NONE:
+    pure role coverage, no resume link."""
+
+    NONE = "NONE"
+    SUPPORTING = "SUPPORTING"
+    PRIMARY = "PRIMARY"

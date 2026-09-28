@@ -12,6 +12,7 @@ from app.domain.enums import Difficulty, InterviewStatus, Role
 if TYPE_CHECKING:
     from app.models.evaluation import Evaluation
     from app.models.interview_message import InterviewMessage
+    from app.models.interview_plan import InterviewPlanRecord
     from app.models.interview_question import InterviewQuestion
     from app.models.interview_resume import InterviewResume
     from app.models.interview_topic import InterviewTopicEntry
@@ -79,4 +80,7 @@ class InterviewSession(Base):
         back_populates="session",
         order_by="InterviewTopicEntry.sequence_number",
         passive_deletes=True,
+    )
+    plan: Mapped["InterviewPlanRecord | None"] = relationship(
+        back_populates="session", uselist=False, passive_deletes=True
     )
