@@ -1,4 +1,5 @@
 import { MicIcon, SpeakerIcon, StopIcon } from '../../ui/icons.jsx'
+import { ProbeMark } from '../../ui/InterviewProbeLoader.jsx'
 
 // A compact, meeting-style control row (no card around it). Exposes exactly the
 // existing capabilities (replay/stop the question, start/stop the mic,
@@ -104,7 +105,7 @@ function InterviewControls({
         tone="danger"
         primary
         label={submitting ? 'Evaluating your answer…' : 'Finish Answer'}
-        icon={<StopIcon className="h-4.5 w-4.5" />}
+        icon={submitting ? <ProbeMark size="sm" tone="current" /> : <StopIcon className="h-4.5 w-4.5" />}
       />
 
       {micSupported ? (
@@ -116,12 +117,16 @@ function InterviewControls({
           ariaBusy={isListening || isProcessing}
           active={isListening}
           label={isProcessing ? 'Processing…' : isListening ? 'Stop' : 'Speak answer'}
-          icon={<MicIcon className={`h-4.5 w-4.5 ${isListening ? 'animate-pulse' : ''}`} />}
+          icon={
+            isProcessing ? (
+              <ProbeMark size="sm" tone="current" />
+            ) : (
+              <MicIcon className={`h-4.5 w-4.5 ${isListening ? 'animate-pulse' : ''}`} />
+            )
+          }
         />
       ) : (
-        <p className="max-w-[8rem] self-center text-center text-xs text-muted">
-          Voice input isn't supported here. Type your answer instead.
-        </p>
+        <p className="max-w-[8rem] self-center text-center text-xs text-muted">Voice input isn&apos;t supported in this browser.</p>
       )}
     </div>
   )

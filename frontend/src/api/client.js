@@ -54,13 +54,19 @@ function extractErrorInfo(body) {
   return null
 }
 
-async function request(path, { method = 'GET', body, headers } = {}) {
+async function request(path, { method = 'GET', body, headers, isFormData = false } = {}) {
   let response
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
       method,
-      headers: { 'Content-Type': 'application/json', ...headers },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      // A FormData body (multipart/form-data, e.g. resume upload) must
+      // never get a JSON Content-Type — and must never be JSON.stringify'd,
+      // which would silently turn it into the string "[object FormData]".
+      // The browser sets its own Content-Type (with the multipart
+      // boundary) automatically when `body` is a FormData instance, so
+      // that header is deliberately omitted here rather than forced.
+      headers: isFormData ? headers : { 'Content-Type': 'application/json', ...headers },
+      body: isFormData ? body : body !== undefined ? JSON.stringify(body) : undefined,
     })
   } catch {
     // fetch() throws for network failures and CORS rejections alike —
@@ -91,4 +97,7 @@ async function request(path, { method = 'GET', body, headers } = {}) {
 export const apiClient = {
   get: (path) => request(path),
   post: (path, body, options) => request(path, { method: 'POST', body, headers: options?.headers }),
+  // For multipart/form-data uploads (e.g. resume upload) — `body` must
+  // already be a real FormData instance.
+  postForm: (path, formData) => request(path, { method: 'POST', body: formData, isFormData: true }),
 }

@@ -1,41 +1,65 @@
-import { Mic } from 'lucide-react'
+import { Video, VideoOff } from 'lucide-react'
+import { useCandidateCamera } from '../../../hooks/useCandidateCamera.js'
 import { VOICE_STATUS } from '../../../voice/voiceState.js'
 
 const ACTIVE_STATUSES = [VOICE_STATUS.CANDIDATE_LISTENING, VOICE_STATUS.CANDIDATE_SPEAKING, VOICE_STATUS.PROCESSING]
 
-// The candidate self-view: a small landscape tile floating over the
-// interviewer frame, clearly secondary to it. `candidate.webp` is today's
-// visual fallback (there is no camera stream); the markup is a plain
-// <img> inside a fixed-ratio frame so a future live MediaStream could
-// replace it without changing this layout. The visible mic status text
-// lives once, in VoiceStatusBar — this tile only shows a silent activity
-// dot so the same words never render twice.
+// The candidate's own small self-view, secondary to the interviewer beside
+// it. Camera is entirely optional and self-contained (useCandidateCamera):
+// off by default, toggled with the button below the tile (always visible
+// and a real touch target — never a hover-only affordance), and never
+// required. When on, this shows the real getUserMedia stream (muted,
+// mirrored like any self-view); every other state — off, still requesting
+// permission, denied, or no camera hardware at all — falls back to the
+// same static production photo, and voice keeps working identically
+// either way.
 function CandidateTile({ status }) {
   const isActive = ACTIVE_STATUSES.includes(status)
+  const { state: cameraState, videoRef, toggle: toggleCamera } = useCandidateCamera()
+  const isLive = cameraState === 'on'
 
   return (
-    <div
-      className={`relative aspect-[4/3] w-full overflow-hidden rounded-2xl border-2 shadow-glass transition-colors duration-200 ${
-        isActive ? 'border-primary' : 'border-white/80'
-      }`}
-    >
-      <img
-        src="/assets/people/candidate.webp"
-        alt="You, on a video call"
-        className="h-full w-full object-cover object-[center_28%]"
-      />
-      <span className="absolute bottom-1.5 left-1.5 flex items-center gap-1 rounded-full bg-ink-fixed/55 px-2 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm">
-        <Mic className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
-        You
-      </span>
-      <span
-        aria-hidden="true"
-        className={`absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full ${
-          isActive ? 'bg-primary text-white' : 'bg-ink-fixed/45 text-white/70'
+    <div className="flex shrink-0 flex-col items-center gap-1">
+      <div
+        className={`relative h-14 w-14 overflow-hidden rounded-full border shadow-glass-sm transition-colors duration-200 sm:h-16 sm:w-16 ${
+          isActive ? 'border-primary' : 'border-glass/70'
         }`}
       >
-        <span className={`h-1.5 w-1.5 rounded-full bg-current ${isActive ? 'motion-safe:animate-pulse' : ''}`} />
-      </span>
+        {isLive ? (
+          <video ref={videoRef} autoPlay playsInline muted className="h-full w-full scale-x-[-1] object-cover" />
+        ) : (
+          <img
+            src="/assets/people/candidate.webp"
+            alt="You"
+            className="h-full w-full object-cover object-[center_28%]"
+          />
+        )}
+
+        <span
+          aria-hidden="true"
+          className={`absolute right-0.5 top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full ${
+            isActive ? 'bg-primary' : 'bg-ink-fixed/40'
+          }`}
+        >
+          <span className={`h-1.5 w-1.5 rounded-full bg-white ${isActive ? 'motion-safe:animate-pulse' : 'opacity-70'}`} />
+        </span>
+      </div>
+
+      <div className="flex items-center gap-1">
+        <span className="text-[11px] font-medium text-muted">You</span>
+        <button
+          type="button"
+          onClick={toggleCamera}
+          aria-pressed={isLive}
+          aria-label={isLive ? 'Turn camera off' : 'Turn camera on'}
+          title={cameraState === 'denied' ? 'Camera unavailable — check your browser permissions' : undefined}
+          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-colors duration-150 ${
+            isLive ? 'border-primary/40 bg-primary-light text-primary' : 'border-line text-muted hover:text-ink'
+          }`}
+        >
+          {isLive ? <Video className="h-3 w-3" strokeWidth={2} /> : <VideoOff className="h-3 w-3" strokeWidth={2} />}
+        </button>
+      </div>
     </div>
   )
 }

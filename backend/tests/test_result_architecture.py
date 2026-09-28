@@ -93,11 +93,15 @@ def test_result_schemas_never_expose_agent_reason_or_internal_fields():
 
 
 def test_no_new_alembic_migration_was_introduced_for_the_result_layer():
+    # As of Task 22 (Phase 2's resume feature later adds its own migration
+    # on top — see 910709f7043a_create_interview_resumes_table.py — which
+    # is unrelated to the result layer and expected here).
     migrations_dir = Path(__file__).resolve().parent.parent / "alembic" / "versions"
     revision_files = sorted(p.name for p in migrations_dir.glob("*.py"))
     assert revision_files == [
         "373850180458_add_unique_constraint_on_session_.py",
         "538fb309b1be_create_interview_topics_table.py",
+        "910709f7043a_create_interview_resumes_table.py",
         "a451a0225842_create_interview_sessions_table.py",
         "d00c8abb5098_create_interview_questions_messages_.py",
     ]

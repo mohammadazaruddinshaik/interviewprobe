@@ -1,18 +1,20 @@
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, Header, status
+from fastapi import APIRouter, Depends, File, Header, UploadFile, status
 from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 
 from app.api.deps import (
     enforce_interview_creation_rate_limit,
     enforce_interview_start_rate_limit,
+    enforce_resume_upload_rate_limit,
     get_answer_rate_limiter,
     get_evaluation_service,
     get_idempotency_store,
     get_interview_service,
     get_result_service,
+    get_resume_service,
     get_runtime_state_service,
 )
 from app.core.config import settings
@@ -46,10 +48,12 @@ from app.schemas.interview import (
     QuestionResponse,
     ResultInterviewResponse,
     ResultQuestionResponse,
+    ResumeResponse,
     StartInterviewResponse,
     SubmitAnswerRequest,
     SubmitAnswerResponse,
 )
+from app.resume.service import ResumeService
 from app.services.interview_service import InterviewService
 from app.services.result_service import ResultService
 
@@ -333,6 +337,43 @@ def get_interview(
         current_question=_to_question_response(current_question) if current_question is not None else None,
     )
     return DataResponse(data=response)
+
+
+def _to_resume_response(resume) -> ResumeResponse:
+    return ResumeResponse(
+        session_id=resume.session_id,
+        original_filename=resume.original_filename,
+        content_type=resume.content_type,
+        file_size=resume.file_size,
+        status=resume.extraction_status,
+        extraction_error=resume.extraction_error,
+    )
+
+
+@router.post("/{session_id}/resume", response_model=DataResponse[ResumeResponse])
+async def upload_resume(
+    session_id: uuid.UUID,
+    resume: UploadFile = File(...),
+    service: ResumeService = Depends(get_resume_service),
+    _rate_limit: None = Depends(enforce_resume_upload_rate_limit),
+) -> DataResponse[ResumeResponse]:
+    # Resume upload is entirely optional and never blocks the interview
+    # (Phase 2 brief) — this endpoint's own failure modes reflect that:
+    # a bad request (wrong file type/size/session state) is a normal 4xx,
+    # raised before any row is created (see ResumeService._validate_request
+    # via app.main's registered exception handlers); a bad FILE (corrupted,
+    # unreadable, or an LLM hiccup while structuring it) is never a 5xx —
+    # ResumeService always persists that as a FAILED row and returns it
+    # here with a normal 200, for the Setup page's existing "couldn't read
+    # this resume" UI to render.
+    data = await resume.read()
+    saved = await service.upload_resume(
+        session_id=session_id,
+        filename=resume.filename or "resume",
+        content_type=resume.content_type or "",
+        data=data,
+    )
+    return DataResponse(data=_to_resume_response(saved))
 
 
 @router.post("/{session_id}/complete", response_model=DataResponse[CompleteInterviewResponse])

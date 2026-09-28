@@ -89,6 +89,8 @@ describe('remote STT integration: VoiceInterviewView -> useVoiceInterviewSession
   // present as soon as the interview is ready, with no mode toggle to click.
   async function renderReadyInterview() {
     renderInterview()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Begin' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Begin' }))
     await waitFor(() => expect(screen.getByText(QUESTION_TEXT)).toBeTruthy())
     await waitFor(() => expect(screen.getByRole('button', { name: 'Speak answer' })).toBeTruthy())
   }

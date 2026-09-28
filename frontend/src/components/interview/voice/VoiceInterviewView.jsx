@@ -1,8 +1,10 @@
+import CandidateTile from '../room/CandidateTile.jsx'
 import InterviewControls from '../room/InterviewControls.jsx'
 import InterviewNavbar from '../room/InterviewNavbar.jsx'
 import InterviewShell from '../room/InterviewShell.jsx'
 import InterviewSidebar from '../room/InterviewSidebar.jsx'
 import InterviewerVideo from '../room/InterviewerVideo.jsx'
+import LiveTranscript from '../room/LiveTranscript.jsx'
 import QuestionPanel from '../room/QuestionPanel.jsx'
 import TranscriptPanel from '../room/TranscriptPanel.jsx'
 import VoiceStatusBar from '../room/VoiceStatusBar.jsx'
@@ -27,6 +29,8 @@ function VoiceInterviewView({
   headingRef,
   transcript = [],
   earlierAnswersCount = 0,
+  topics = [],
+  currentTopic,
   onEndInterview,
   ending = false,
   submitError = null,
@@ -37,6 +41,10 @@ function VoiceInterviewView({
   const leadIn = question?.lead_in ?? ''
   const canSubmit = answer.trim().length > 0 && !submitting
   const hasError = state.status === VOICE_STATUS.ERROR && state.error
+  const isCandidateTurn =
+    state.status === VOICE_STATUS.CANDIDATE_LISTENING ||
+    state.status === VOICE_STATUS.CANDIDATE_SPEAKING ||
+    state.status === VOICE_STATUS.PROCESSING
 
   const answeredCount = earlierAnswersCount + transcript.length
 
@@ -57,16 +65,25 @@ function VoiceInterviewView({
           Finish Answer, then questions & transcript, then session context
           (side by side on tablets, stacked on phones). */}
       <main className="grid flex-1 grid-cols-1 content-start gap-4 px-4 pb-4 pt-3 sm:px-6 sm:pb-6 md:grid-cols-2 lg:min-h-0 lg:content-stretch lg:grid-cols-[200px_minmax(0,1fr)_260px] lg:grid-rows-[minmax(0,1fr)] lg:gap-4 lg:px-6 lg:pb-5 xl:grid-cols-[minmax(0,0.84fr)_minmax(0,2fr)_minmax(0,1fr)] xl:gap-5">
-        <InterviewSidebar roleLabel={roleLabel} answeredCount={answeredCount} className="order-3 min-w-0 md:self-start lg:order-1" />
+        <InterviewSidebar
+          roleLabel={roleLabel}
+          answeredCount={answeredCount}
+          topics={topics}
+          currentTopic={currentTopic}
+          answeredTopics={transcript.map((entry) => entry.topic)}
+          className="order-3 min-w-0 md:self-start lg:order-1"
+        />
 
         <div className="order-1 flex min-w-0 flex-col gap-3 md:col-span-2 lg:order-2 lg:col-span-1 lg:min-h-0">
           <div className="flex flex-col gap-3 lg:min-h-0 lg:shrink">
-            <InterviewerVideo
-              interviewer={interviewer}
-              isSpeaking={isSpeakerSpeaking}
-              status={state.status}
-              className="lg:min-h-40 lg:shrink"
-            />
+            {/* The room's compact presence row — interviewer, small and
+                elegant, beside the candidate's own optional self-view.
+                Neither dominates; the question below remains the room's
+                actual focal point. */}
+            <div className="flex items-center justify-between gap-3">
+              <InterviewerVideo interviewer={interviewer} isSpeaking={isSpeakerSpeaking} />
+              <CandidateTile status={state.status} />
+            </div>
 
             {/* Sits directly under the interviewer frame. On desktop the
                 frame is the flexible part of the room, so it gives up the
@@ -100,13 +117,11 @@ function VoiceInterviewView({
             )}
           </div>
 
-          <QuestionPanel
-            questionText={questionText}
-            leadIn={leadIn}
-            interimTranscript={state.interimTranscript}
-            answer={answer}
-            headingRef={headingRef}
-          />
+          <QuestionPanel questionText={questionText} questionId={question?.id} leadIn={leadIn} headingRef={headingRef} />
+
+          {/* Transcript-first candidate speech: appears here, directly
+              above the voice dock, never underneath the question above. */}
+          <LiveTranscript answer={answer} interimTranscript={state.interimTranscript} isActive={isCandidateTurn} />
 
           {/* The voice dock: status + controls. Stacked on smaller screens;
               one row on wide desktops so the interviewer frame keeps its
@@ -137,8 +152,6 @@ function VoiceInterviewView({
         <TranscriptPanel
           transcript={transcript}
           currentQuestionText={questionText}
-          currentAnswer={answer}
-          interimTranscript={state.interimTranscript}
           earlierAnswersCount={earlierAnswersCount}
           className="order-2 min-w-0 md:self-start lg:order-3"
         />

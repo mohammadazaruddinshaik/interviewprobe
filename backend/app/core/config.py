@@ -90,6 +90,16 @@ class Settings(BaseSettings):
     voice_stt_token_rate_limit: int = 10
     voice_stt_token_rate_window_seconds: int = 60
 
+    # Phase 2: optional resume upload. A real resume is a small document
+    # (typically well under 1MB); 5MB is a generous ceiling that still
+    # bounds memory use per upload, not a tuned/measured limit.
+    resume_max_file_size_bytes: int = 5 * 1024 * 1024
+    # Same per-client abuse protection as the other paid-API-triggering
+    # endpoints above (interview_creation_rate_limit, voice_tts_rate_limit,
+    # ...) — resume upload triggers a structured LLM call too.
+    resume_upload_rate_limit: int = 5
+    resume_upload_rate_window_seconds: int = 60
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

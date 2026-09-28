@@ -1,15 +1,17 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError } from '../api/client.js'
 import { createInterview } from '../api/interviews.js'
 import InterviewPreview from '../components/setup/InterviewPreview.jsx'
 import InterviewStepper from '../components/setup/InterviewStepper.jsx'
+import ResumeUpload from '../components/setup/ResumeUpload.jsx'
 import RoleSelector from '../components/setup/RoleSelector.jsx'
 import SetupFeatureList from '../components/setup/SetupFeatureList.jsx'
 import SetupHeader from '../components/setup/SetupHeader.jsx'
 import SetupNavbar from '../components/setup/SetupNavbar.jsx'
 import SetupShell from '../components/setup/SetupShell.jsx'
 import Button from '../components/ui/Button.jsx'
+import { InlineProbeLoader } from '../components/ui/InterviewProbeLoader.jsx'
 import { DEFAULT_DIFFICULTY, DEFAULT_QUESTION_COUNT, ROLES, getDefaultTopicsForRole } from '../data/interviewCatalog.js'
 
 function InterviewNew() {
@@ -18,11 +20,43 @@ function InterviewNew() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState(null)
 
+  // An interview session created early, ONLY because the candidate
+  // actually picked a resume file to upload (POST /interviews/{id}/resume
+  // needs a real session to attach to) — never created just by landing on
+  // this page. Start Interview reuses it instead of creating a second
+  // session when one is already reserved this way. A ref (not state):
+  // reading it never needs to trigger a render, and `ResumeUpload` reads
+  // it through a stable async callback rather than a prop that goes stale.
+  const reservedSessionIdRef = useRef(null)
+
   const role = ROLES.find((r) => r.id === roleId) ?? ROLES[0]
 
   function handleRoleChange(nextRoleId) {
     setRoleId(nextRoleId)
     setErrorMessage(null)
+    // A session reserved for a resume upload was created with the
+    // PREVIOUS role's topics — switching roles invalidates that
+    // selection, so the reservation (and, via ResumeUpload's `key` below,
+    // its own upload state) resets to a clean slate rather than silently
+    // starting the new role's interview from a stale, wrong-topic session.
+    reservedSessionIdRef.current = null
+  }
+
+  // Passed to ResumeUpload as `ensureSessionId` — called only when the
+  // candidate actually picks a file. Reuses the existing reservation if
+  // one already exists for the current role (e.g. replacing a resume),
+  // otherwise creates a real session right now with the currently
+  // selected role's own catalog topics, exactly as handleStart would.
+  async function ensureSessionId() {
+    if (reservedSessionIdRef.current) return reservedSessionIdRef.current
+    const interview = await createInterview({
+      role: roleId,
+      difficulty: DEFAULT_DIFFICULTY,
+      topics: getDefaultTopicsForRole(role),
+      questionLimit: DEFAULT_QUESTION_COUNT,
+    })
+    reservedSessionIdRef.current = interview.id
+    return interview.id
   }
 
   async function handleStart() {
@@ -30,6 +64,13 @@ function InterviewNew() {
     setIsSubmitting(true)
     setErrorMessage(null)
     try {
+      // A resume upload may have already created this exact session
+      // (with these exact role/difficulty/topics) — reuse it rather than
+      // creating a second, resume-less duplicate.
+      if (reservedSessionIdRef.current) {
+        navigate(`/interview/${reservedSessionIdRef.current}`)
+        return
+      }
       // Only the role is a candidate choice — difficulty, topic breadth, and
       // pacing are decided by the interview itself from here on (the
       // adaptive engine adjusts every question already; the backend still
@@ -81,6 +122,15 @@ function InterviewNew() {
                   <p className="mb-1 mt-4 text-xs font-semibold uppercase tracking-wide text-muted">Select Role</p>
 
                   <RoleSelector roles={ROLES} value={roleId} onChange={handleRoleChange} />
+
+                  {/* `key={roleId}`: a role change invalidates any reservation
+                      made under the previous role (see handleRoleChange), so
+                      this remounts to a clean idle state right along with it —
+                      never left showing a resume that belongs to a different
+                      role's now-abandoned session. */}
+                  <div className="mt-4">
+                    <ResumeUpload key={roleId} ensureSessionId={ensureSessionId} />
+                  </div>
                 </div>
 
                 <div className="mt-4">
@@ -92,7 +142,7 @@ function InterviewNew() {
                     withArrow={!isSubmitting}
                     className="w-full justify-center bg-gradient-to-r from-primary to-accent-2 py-3 text-sm"
                   >
-                    {isSubmitting ? 'Starting your interview…' : 'Start Interview'}
+                    {isSubmitting ? <InlineProbeLoader label="Starting your interview…" /> : 'Start Interview'}
                   </Button>
                   {errorMessage && (
                     <p role="alert" aria-live="assertive" className="mt-2 text-center text-xs text-error">

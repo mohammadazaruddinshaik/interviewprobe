@@ -30,6 +30,11 @@ from app.redis.exceptions import (
     RateLimitExceededError,
     RedisProtectionUnavailableError,
 )
+from app.resume.exceptions import (
+    EmptyResumeFileError,
+    ResumeFileTooLargeError,
+    UnsupportedResumeFileTypeError,
+)
 from app.services.interview_service import (
     InterviewNotFoundError,
     InvalidInterviewStateError,
@@ -112,6 +117,12 @@ _SERVICE_ERROR_STATUS_CODES: dict[type[Exception], tuple[int, str]] = {
     InterviewLockBusyError: (409, "INTERVIEW_BUSY"),
     EvaluationLockBusyError: (409, "EVALUATION_BUSY"),
     IdempotencyKeyReusedError: (409, "IDEMPOTENCY_KEY_REUSED"),
+    # Phase 2 — resume upload request-level validation (never a resume
+    # processing failure; those are always persisted as a normal FAILED
+    # row + 200 response, see app/resume/service.py).
+    UnsupportedResumeFileTypeError: (422, "UNSUPPORTED_RESUME_FILE_TYPE"),
+    ResumeFileTooLargeError: (413, "RESUME_FILE_TOO_LARGE"),
+    EmptyResumeFileError: (422, "EMPTY_RESUME_FILE"),
 }
 
 

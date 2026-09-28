@@ -2,10 +2,12 @@
 
 import asyncio
 import hashlib
+import io
 import math
 import time
 from uuid import UUID
 
+from docx import Document
 from pydantic import BaseModel
 
 from app.domain.enums import InterviewTopic, Role
@@ -355,3 +357,81 @@ class FakeKnowledgeStore(KnowledgeStore):
             raise self._error
         for chunk_id in chunk_ids:
             self._entries.pop(chunk_id, None)
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 — resume upload test fixtures. Real, minimal, hand-built file
+# bytes (not fixture files on disk) so resume extraction tests exercise
+# the actual pypdf/python-docx parsing path end to end, without needing a
+# binary test asset committed to the repo.
+# ---------------------------------------------------------------------------
+
+
+def make_test_pdf_bytes(text: str = "Test Resume Content For Extraction") -> bytes:
+    """A minimal, real, single-page PDF with `text` as extractable content
+    (real PDF syntax, not a fake magic-bytes-only stub) — pypdf reads it
+    exactly like a real resume export."""
+    content = f"BT /F1 24 Tf 72 712 Td ({text}) Tj ET".encode()
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 4 0 R >> >> "
+        b"/MediaBox [0 0 612 792] /Contents 5 0 R >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        f"<< /Length {len(content)} >>\nstream\n".encode() + content + b"\nendstream",
+    ]
+
+    buf = io.BytesIO()
+    buf.write(b"%PDF-1.4\n")
+    offsets = [0]
+    for i, obj in enumerate(objects, start=1):
+        offsets.append(buf.tell())
+        buf.write(f"{i} 0 obj\n".encode())
+        buf.write(obj)
+        buf.write(b"\nendobj\n")
+    xref_offset = buf.tell()
+    buf.write(f"xref\n0 {len(objects) + 1}\n".encode())
+    buf.write(b"0000000000 65535 f \n")
+    for offset in offsets[1:]:
+        buf.write(f"{offset:010d} 00000 n \n".encode())
+    buf.write(f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF".encode())
+    return buf.getvalue()
+
+
+def make_test_pdf_with_no_text_bytes() -> bytes:
+    """A structurally valid single-page PDF with an empty content stream
+    (no `Tj`/text-showing operator at all) — simulates a scanned PDF with
+    no extractable text layer, without needing real image data."""
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /Resources << >> /MediaBox [0 0 612 792] /Contents 4 0 R >>",
+        b"<< /Length 0 >>\nstream\n\nendstream",
+    ]
+
+    buf = io.BytesIO()
+    buf.write(b"%PDF-1.4\n")
+    offsets = [0]
+    for i, obj in enumerate(objects, start=1):
+        offsets.append(buf.tell())
+        buf.write(f"{i} 0 obj\n".encode())
+        buf.write(obj)
+        buf.write(b"\nendobj\n")
+    xref_offset = buf.tell()
+    buf.write(f"xref\n0 {len(objects) + 1}\n".encode())
+    buf.write(b"0000000000 65535 f \n")
+    for offset in offsets[1:]:
+        buf.write(f"{offset:010d} 00000 n \n".encode())
+    buf.write(f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF".encode())
+    return buf.getvalue()
+
+
+def make_test_docx_bytes(text: str = "Test Resume Content For Extraction") -> bytes:
+    """A minimal, real .docx (via python-docx's own writer) with `text` as
+    a paragraph — read back by the same python-docx parsing path
+    `extract_resume_text` uses."""
+    document = Document()
+    document.add_paragraph(text)
+    buf = io.BytesIO()
+    document.save(buf)
+    return buf.getvalue()

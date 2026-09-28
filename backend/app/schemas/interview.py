@@ -9,6 +9,7 @@ from app.domain.enums import (
     InterviewTopic,
     InterviewTopicStatus,
     QuestionType,
+    ResumeExtractionStatus,
     Role,
 )
 
@@ -177,3 +178,24 @@ class InterviewResultResponse(BaseModel):
     topics: list[InterviewTopicResponse]
     questions: list[ResultQuestionResponse]
     evaluation: EvaluationResponse
+
+
+# ---------------------------------------------------------------------------
+# Resume (Phase 2) — POST /interviews/{id}/resume's response. Deliberately
+# thin: processing status and safe metadata only, never the extracted text
+# or structured profile (Step 7 of the Phase 2 brief — no frontend surface
+# exists yet that needs either, so neither is returned).
+# ---------------------------------------------------------------------------
+
+
+class ResumeResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    session_id: UUID
+    original_filename: str
+    content_type: str
+    file_size: int
+    status: ResumeExtractionStatus
+    # Only set (non-null) when status is FAILED — a candidate-safe message,
+    # never a raw exception/provider string. See app/resume/service.py.
+    extraction_error: str | None = None

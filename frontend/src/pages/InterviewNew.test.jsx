@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../api/interviews.js', () => ({
   createInterview: vi.fn(),
+  uploadResume: vi.fn(),
 }))
 
 const mockNavigate = vi.fn()
@@ -21,12 +22,21 @@ vi.mock('react-router-dom', async (importOriginal) => {
   return { ...actual, useNavigate: () => mockNavigate }
 })
 
-import { createInterview } from '../api/interviews.js'
+import { createInterview, uploadResume } from '../api/interviews.js'
 import { ApiError } from '../api/client.js'
 import { DEFAULT_DIFFICULTY, DEFAULT_QUESTION_COUNT, ROLES } from '../data/interviewCatalog.js'
 import InterviewNew from './InterviewNew.jsx'
 
 const START_LABEL = 'Start Interview'
+
+function makeResumeFile(name = 'resume.pdf') {
+  return new File(['%PDF-1.4 fake resume content'], name, { type: 'application/pdf' })
+}
+
+function selectResumeFile(file = makeResumeFile()) {
+  const input = document.querySelector('input[type="file"]')
+  fireEvent.change(input, { target: { files: [file] } })
+}
 
 function deferred() {
   let resolve
@@ -221,5 +231,148 @@ describe('InterviewNew.jsx — Technical Round setup', () => {
         'Something went wrong while creating your interview.',
       ),
     )
+  })
+
+  // -------------------------------------------------------------------
+  // Optional resume upload (Phase 2)
+  // -------------------------------------------------------------------
+
+  it('renders the resume section as optional, with no upload/session-creation request made yet', () => {
+    renderInterviewNew()
+
+    expect(screen.getByText('Resume · Optional')).toBeTruthy()
+    expect(screen.getByText('Drop your resume here, or browse')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Skip for now' })).toBeTruthy()
+    expect(createInterview).not.toHaveBeenCalled()
+    expect(uploadResume).not.toHaveBeenCalled()
+  })
+
+  it('uploading a resume reserves a session, shows a busy state, then "Resume ready"', async () => {
+    renderInterviewNew()
+    const { promise, resolve } = deferred()
+    createInterview.mockResolvedValue({ id: 'resume-session-1' })
+    uploadResume.mockReturnValue(promise)
+
+    selectResumeFile(makeResumeFile('my_resume.pdf'))
+
+    await screen.findByText('Reading your resume')
+
+    resolve({ status: 'READY', session_id: 'resume-session-1', extraction_error: null })
+
+    await screen.findByText('Resume ready')
+    expect(screen.getByText('my_resume.pdf')).toBeTruthy()
+    expect(createInterview).toHaveBeenCalledTimes(1)
+    expect(uploadResume).toHaveBeenCalledWith('resume-session-1', expect.any(File))
+  })
+
+  it('starting after a successful resume upload reuses the same session instead of creating a second one', async () => {
+    renderInterviewNew()
+    createInterview.mockResolvedValue({ id: 'resume-session-reused' })
+    uploadResume.mockResolvedValue({ status: 'READY', session_id: 'resume-session-reused', extraction_error: null })
+
+    selectResumeFile()
+    await screen.findByText('Resume ready')
+
+    fireEvent.click(screen.getByRole('button', { name: START_LABEL }))
+
+    await vi.waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/interview/resume-session-reused'))
+    // Exactly one session was ever created — Start Interview did not
+    // create a second, resume-less duplicate.
+    expect(createInterview).toHaveBeenCalledTimes(1)
+  })
+
+  it('a failed extraction shows the failed state with Replace/Skip, never a raw error page', async () => {
+    renderInterviewNew()
+    createInterview.mockResolvedValue({ id: 'resume-session-failed' })
+    uploadResume.mockResolvedValue({
+      status: 'FAILED',
+      session_id: 'resume-session-failed',
+      extraction_error: "Couldn't read this resume.",
+    })
+
+    selectResumeFile()
+
+    await screen.findByText("Couldn't read this resume.")
+    expect(screen.getByText('Try another PDF or DOCX.')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Replace resume' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Skip for now' })).toBeTruthy()
+  })
+
+  it('a network failure during upload also lands in the failed state, not an unhandled error', async () => {
+    renderInterviewNew()
+    createInterview.mockResolvedValue({ id: 'resume-session-network-fail' })
+    uploadResume.mockRejectedValueOnce(new ApiError("InterviewProbe couldn't reach the interview service. Please try again."))
+
+    selectResumeFile()
+
+    await screen.findByText("InterviewProbe couldn't reach the interview service. Please try again.")
+  })
+
+  it('rejects an unsupported file type client-side without ever calling the API', async () => {
+    renderInterviewNew()
+
+    selectResumeFile(new File(['not a resume'], 'resume.exe', { type: 'application/octet-stream' }))
+
+    await screen.findByText('Only PDF or DOCX files are supported.')
+    expect(createInterview).not.toHaveBeenCalled()
+    expect(uploadResume).not.toHaveBeenCalled()
+  })
+
+  it('skipping never calls the API and collapses to a reopenable "Add a resume" link', () => {
+    renderInterviewNew()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Skip for now' }))
+
+    expect(screen.queryByText('Drop your resume here, or browse')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Add a resume' })).toBeTruthy()
+    expect(createInterview).not.toHaveBeenCalled()
+    expect(uploadResume).not.toHaveBeenCalled()
+  })
+
+  it('replacing a ready resume re-opens the picker and uploads the new file', async () => {
+    renderInterviewNew()
+    createInterview.mockResolvedValue({ id: 'resume-session-replace' })
+    uploadResume.mockResolvedValue({ status: 'READY', session_id: 'resume-session-replace', extraction_error: null })
+
+    selectResumeFile(makeResumeFile('first.pdf'))
+    await screen.findByText('first.pdf')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Replace' }))
+    selectResumeFile(makeResumeFile('second.pdf'))
+
+    await screen.findByText('second.pdf')
+    // The same reserved session is reused for the replacement, not a new one.
+    expect(createInterview).toHaveBeenCalledTimes(1)
+    expect(uploadResume).toHaveBeenCalledTimes(2)
+  })
+
+  it('switching roles after reserving a session starts a fresh reservation under the new role', async () => {
+    renderInterviewNew()
+    createInterview.mockResolvedValueOnce({ id: 'session-role-a' })
+    uploadResume.mockResolvedValue({ status: 'READY', session_id: 'session-role-a', extraction_error: null })
+
+    selectResumeFile()
+    await screen.findByText('Resume ready')
+
+    fireEvent.click(screen.getByRole('button', { name: /Frontend Developer/ }))
+    // The resume section remounts to a clean idle state for the new role.
+    expect(screen.getByText('Drop your resume here, or browse')).toBeTruthy()
+
+    createInterview.mockResolvedValueOnce({ id: 'session-role-b' })
+    fireEvent.click(screen.getByRole('button', { name: START_LABEL }))
+
+    await vi.waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/interview/session-role-b'))
+    expect(createInterview).toHaveBeenCalledTimes(2)
+    expect(createInterview).toHaveBeenLastCalledWith(expect.objectContaining({ role: 'FRONTEND_DEVELOPER' }))
+  })
+
+  it('never uploads or creates a resume-associated session when the candidate never touches resume upload', async () => {
+    renderInterviewNew()
+    createInterview.mockResolvedValue({ id: 'plain-session' })
+
+    fireEvent.click(screen.getByRole('button', { name: START_LABEL }))
+
+    await vi.waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/interview/plain-session'))
+    expect(uploadResume).not.toHaveBeenCalled()
   })
 })

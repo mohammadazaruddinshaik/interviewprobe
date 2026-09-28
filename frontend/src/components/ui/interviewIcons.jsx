@@ -103,6 +103,68 @@ export function QuestionIcon({ className }) {
   )
 }
 
+// Transcript — stacked lines with one shorter, mid-typed line: speech
+// being written down as it happens, not a static document.
+export function TranscriptIcon({ className }) {
+  return (
+    <svg {...base({ className })}>
+      <rect x="4" y="3.5" width="16" height="17" rx="4" />
+      <path d="M7.5 8.5h9M7.5 12.5h9M7.5 16.5h5.5" />
+      <Dot cx="17" cy="16.5" />
+    </svg>
+  )
+}
+
+// Camera — a rounded frame with a lens ring: the candidate's own optional
+// self-view, framed the same restrained way the interviewer is.
+export function CameraIcon({ className }) {
+  return (
+    <svg {...base({ className })}>
+      <path d="M8 6.5l1.3-2h5.4l1.3 2H19a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8.5a2 2 0 0 1 2-2z" />
+      <circle cx="12" cy="13" r="3.4" />
+    </svg>
+  )
+}
+
+// Interview plan / roadmap — three waypoints on a single path: the stages
+// of the conversation, not internal orchestration state.
+export function RoadmapIcon({ className }) {
+  return (
+    <svg {...base({ className })}>
+      <path d="M4.5 18.5c3-5 5-9 7.5-9s4.5 4 7.5 9" />
+      <Dot cx="4.5" cy="18.5" />
+      <Dot cx="12" cy="9.5" />
+      <circle cx="19.5" cy="18.5" r="1.6" />
+    </svg>
+  )
+}
+
+// Completion — a rounded checkmark badge, distinct from the plain inline
+// check used for list items: this one marks a whole stage/session as done.
+export function CompletionIcon({ className }) {
+  return (
+    <svg {...base({ className })}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M8.3 12.3l2.6 2.6 5-5.4" />
+    </svg>
+  )
+}
+
+// Resume — a document with a folded corner (an uploaded file, not the
+// interview's own transcript — that distinction is why this isn't
+// TranscriptIcon's stacked-lines grammar) plus a signal dot marking the
+// one line the candidate actually wrote, not a generic "file" glyph.
+export function ResumeIcon({ className }) {
+  return (
+    <svg {...base({ className })}>
+      <path d="M6.5 3.5h7.5l4 4V19a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 5 19V5A1.5 1.5 0 0 1 6.5 3.5z" />
+      <path d="M14 3.5V7a1 1 0 0 0 1 1h3.5" />
+      <path d="M8.3 12.3h6M8.3 15.3h4" />
+      <Dot cx="8.3" cy="9.3" />
+    </svg>
+  )
+}
+
 // Real interview simulation — two overlapping video tiles (interviewer +
 // candidate) with a live dot.
 export function SimulationIcon({ className }) {

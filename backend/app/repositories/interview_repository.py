@@ -8,6 +8,7 @@ from app.domain.enums import InterviewTopicStatus
 from app.models.evaluation import Evaluation
 from app.models.interview_message import InterviewMessage
 from app.models.interview_question import InterviewQuestion
+from app.models.interview_resume import InterviewResume
 from app.models.interview_session import InterviewSession
 from app.models.interview_topic import InterviewTopicEntry
 
@@ -140,3 +141,26 @@ class InterviewRepository:
         self.session.add(evaluation)
         self.session.flush()
         return evaluation
+
+    # ------------------------------------------------------------------
+    # Resume
+    # ------------------------------------------------------------------
+
+    def get_resume(self, session_id: uuid.UUID) -> InterviewResume | None:
+        stmt = select(InterviewResume).where(InterviewResume.session_id == session_id)
+        return self.session.scalars(stmt).one_or_none()
+
+    def create_resume(self, resume: InterviewResume) -> InterviewResume:
+        self.session.add(resume)
+        self.session.flush()
+        return resume
+
+    def update_resume(self, resume: InterviewResume, **changes: Any) -> InterviewResume:
+        for field, value in changes.items():
+            setattr(resume, field, value)
+        self.session.flush()
+        return resume
+
+    def delete_resume(self, resume: InterviewResume) -> None:
+        self.session.delete(resume)
+        self.session.flush()

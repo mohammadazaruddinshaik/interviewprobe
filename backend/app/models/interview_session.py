@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from app.models.evaluation import Evaluation
     from app.models.interview_message import InterviewMessage
     from app.models.interview_question import InterviewQuestion
+    from app.models.interview_resume import InterviewResume
     from app.models.interview_topic import InterviewTopicEntry
 
 
@@ -63,6 +64,13 @@ class InterviewSession(Base):
     questions: Mapped[list["InterviewQuestion"]] = relationship(back_populates="session")
     messages: Mapped[list["InterviewMessage"]] = relationship(back_populates="session")
     evaluation: Mapped["Evaluation | None"] = relationship(back_populates="session", uselist=False)
+    # passive_deletes=True for the same reason as `topics` below: let the
+    # DB's ON DELETE CASCADE (interview_resumes.session_id's foreign key)
+    # remove the row, instead of the ORM loading it and nulling out its
+    # NOT NULL session_id first.
+    resume: Mapped["InterviewResume | None"] = relationship(
+        back_populates="session", uselist=False, passive_deletes=True
+    )
     # passive_deletes=True: on session delete, let the DB's ON DELETE
     # CASCADE (the interview_topics.session_id foreign key) remove topic
     # rows, instead of the ORM loading them and nulling out session_id

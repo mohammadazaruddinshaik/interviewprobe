@@ -74,6 +74,15 @@ function deliverTranscript(text) {
   act(() => onTranscript(text))
 }
 
+// A freshly-started (CREATED) session now opens on a brief spoken welcome
+// before the first question — this clicks past it, the always-available
+// accessible path (see WelcomeIntro.jsx), the same way a keyboard/screen
+// reader user would.
+async function beginFromWelcome() {
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Begin' })).toBeTruthy())
+  fireEvent.click(screen.getByRole('button', { name: 'Begin' }))
+}
+
 function renderInterview(sessionId = 'session-1') {
   return render(
     <MemoryRouter initialEntries={[`/interview/${sessionId}`]}>
@@ -112,6 +121,7 @@ describe('Interview.jsx lifecycle', () => {
       question: { id: 'q1', sequence: 1, text: 'Explain RAG.', topic: 'RAG' },
     })
 
+    await beginFromWelcome()
     await waitFor(() => expect(screen.getByText('Explain RAG.')).toBeTruthy())
     expect(screen.queryByText('Loading your interview…')).toBeNull()
   })
@@ -129,6 +139,7 @@ describe('Interview.jsx lifecycle', () => {
 
     renderInterview('session-1')
 
+    await beginFromWelcome()
     await waitFor(() => expect(screen.getByText('Explain RAG.')).toBeTruthy())
     expect(startInterview).toHaveBeenCalledWith('session-1')
     expect(screen.getByLabelText(ANSWER_LABEL)).toBeTruthy()
@@ -147,6 +158,7 @@ describe('Interview.jsx lifecycle', () => {
 
     renderInterview('session-1')
 
+    await beginFromWelcome()
     await waitFor(() => expect(screen.getByText('Explain RAG.')).toBeTruthy())
     expect(screen.getByText('Technical Round')).toBeTruthy()
     expect(screen.getByText('AI Engineer')).toBeTruthy()
@@ -174,6 +186,7 @@ describe('Interview.jsx lifecycle', () => {
 
     renderInterview('session-1')
 
+    await beginFromWelcome()
     await waitFor(() => expect(screen.getByText('Explain closures.')).toBeTruthy())
     expect(screen.getByText('Full Stack Developer')).toBeTruthy()
     expect(screen.queryByText('AI Engineer')).toBeNull()
@@ -194,6 +207,7 @@ describe('Interview.jsx lifecycle', () => {
 
     renderInterview('session-1')
 
+    await beginFromWelcome()
     await waitFor(() =>
       expect(
         screen.getByText("That's interesting. You mentioned cache invalidation.", { exact: false }),
@@ -216,6 +230,7 @@ describe('Interview.jsx lifecycle', () => {
 
     renderInterview('session-1')
 
+    await beginFromWelcome()
     await waitFor(() => expect(screen.getByText('Explain RAG.')).toBeTruthy())
     expect(useVoiceInterviewSession).toHaveBeenCalledWith(expect.objectContaining({ questionLeadIn: null }))
     expect(screen.queryByText(/null/i)).toBeNull()
@@ -297,6 +312,7 @@ describe('Interview.jsx lifecycle', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
 
+    await beginFromWelcome()
     await waitFor(() => expect(screen.getByText('Explain RAG.')).toBeTruthy())
     expect(getInterview).toHaveBeenCalledTimes(2)
   })
@@ -325,6 +341,7 @@ describe('Interview.jsx lifecycle', () => {
       question: { id: 'q1', sequence: 1, text: 'Explain RAG.', topic: 'RAG' },
     })
     renderInterview()
+    await beginFromWelcome()
     await waitFor(() => expect(screen.getByText('Explain RAG.')).toBeTruthy())
   }
 

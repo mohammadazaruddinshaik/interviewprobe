@@ -90,3 +90,21 @@ export async function getInterviewResult(sessionId) {
   const response = await apiClient.get(`/interviews/${sessionId}/result`)
   return response.data
 }
+
+// POST /interviews/{id}/resume (multipart/form-data) -> DataResponse[ResumeResponse]:
+// { session_id, original_filename, content_type, file_size, status, extraction_error }
+// `status` is one of "UPLOADED"|"EXTRACTING"|"PARSING"|"READY"|"FAILED" —
+// by the time this resolves, processing has already finished synchronously
+// server-side, so in practice only "READY" or "FAILED" is ever observed
+// here. A FAILED response is not a thrown error (see ApiError below) —
+// it's a normal 200, since the upload request itself succeeded; only the
+// file's content couldn't be read. `extraction_error` is a short,
+// candidate-safe message only ever set when status is "FAILED". Never
+// returns the extracted text or structured profile — this endpoint
+// deliberately only ever exposes processing status and safe metadata.
+export async function uploadResume(sessionId, file) {
+  const formData = new FormData()
+  formData.append('resume', file)
+  const response = await apiClient.postForm(`/interviews/${sessionId}/resume`, formData)
+  return response.data
+}

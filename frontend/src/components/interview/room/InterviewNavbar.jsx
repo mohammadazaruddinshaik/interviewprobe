@@ -11,26 +11,41 @@ import { useTheme } from '../../../hooks/useTheme.js'
 // no authentication.
 const CONTEXT_LABELS = ['Progress', 'Feedback', 'Resources']
 
-function formatElapsed(totalSeconds) {
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
+// The interview's real hard maximum — enforced server-side (separately
+// from this frontend task); this is the display's one source of truth for
+// what "full time" means, not an invented value.
+const INTERVIEW_DURATION_SECONDS = 45 * 60
+// The last stretch where the display quietly steps up from muted to a
+// warmer tone — never a flashing/alarming countdown, just a touch more
+// present.
+const LOW_TIME_THRESHOLD_SECONDS = 5 * 60
+
+function formatRemaining(totalSeconds) {
+  const clamped = Math.max(0, totalSeconds)
+  const minutes = Math.floor(clamped / 60)
+  const seconds = clamped % 60
   return `${minutes}:${seconds.toString().padStart(2, '0')}`
 }
 
-// A real, running clock — time actually elapsed since this room mounted.
-// GET /interviews/{id} exposes no start timestamp, so there is nothing
-// authoritative to anchor to; this resets on reload, the same honest scope
-// as the local transcript in Interview.jsx.
-function useElapsedSeconds() {
-  const [seconds, setSeconds] = useState(0)
+// A real, running countdown against the product's actual 45-minute cap —
+// measured from when this room mounted. GET /interviews/{id} exposes no
+// authoritative session-start timestamp, so there is nothing server-side
+// to anchor to yet; this resets on reload, the same honest scope as the
+// local transcript in Interview.jsx. The backend's own hard-limit
+// enforcement is separate, later work — this display doesn't invent one.
+function useRemainingSeconds() {
+  const [remaining, setRemaining] = useState(INTERVIEW_DURATION_SECONDS)
 
   useEffect(() => {
     const startedAt = Date.now()
-    const id = setInterval(() => setSeconds(Math.floor((Date.now() - startedAt) / 1000)), 1000)
+    const id = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - startedAt) / 1000)
+      setRemaining(Math.max(0, INTERVIEW_DURATION_SECONDS - elapsed))
+    }, 1000)
     return () => clearInterval(id)
   }, [])
 
-  return seconds
+  return remaining
 }
 
 // Ending is irreversible (the session becomes COMPLETED and the current
@@ -103,7 +118,8 @@ function EndInterviewControl({ onEndInterview, ending, disabled }) {
 }
 
 function InterviewNavbar({ onEndInterview, ending = false, endDisabled = false }) {
-  const elapsedSeconds = useElapsedSeconds()
+  const remainingSeconds = useRemainingSeconds()
+  const isLowTime = remainingSeconds <= LOW_TIME_THRESHOLD_SECONDS
   const { theme, toggleTheme } = useTheme()
 
   return (
@@ -132,11 +148,13 @@ function InterviewNavbar({ onEndInterview, ending = false, endDisabled = false }
 
         <div className="flex shrink-0 items-center gap-2">
           <span
-            className="hidden items-center gap-2 whitespace-nowrap rounded-full border border-line bg-glass/60 px-3.5 py-2 text-sm font-semibold tabular-nums text-ink sm:flex"
-            aria-label={`Time elapsed ${formatElapsed(elapsedSeconds)}`}
+            className={`hidden items-center gap-2 whitespace-nowrap rounded-full border px-3.5 py-2 text-sm font-semibold tabular-nums sm:flex ${
+              isLowTime ? 'border-warning/40 bg-warning/10 text-warning' : 'border-line bg-glass/60 text-ink'
+            }`}
+            aria-label={`${formatRemaining(remainingSeconds)} remaining`}
           >
-            <Clock className="h-4 w-4 text-ink" strokeWidth={1.75} aria-hidden="true" />
-            {formatElapsed(elapsedSeconds)}
+            <Clock className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+            {formatRemaining(remainingSeconds)}
           </span>
           <button
             type="button"

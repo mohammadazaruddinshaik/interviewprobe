@@ -7,6 +7,7 @@ import InterviewError from '../components/interview/InterviewError.jsx'
 import InterviewLoading from '../components/interview/InterviewLoading.jsx'
 import InterviewShell from '../components/interview/room/InterviewShell.jsx'
 import VoiceInterviewView from '../components/interview/voice/VoiceInterviewView.jsx'
+import WelcomeIntro from '../components/interview/voice/WelcomeIntro.jsx'
 import { ROLE_LABELS } from '../data/interviewCatalog.js'
 import { useVoiceInterviewSession } from '../voice/useVoiceInterviewSession.js'
 import { VOICE_STATUS } from '../voice/voiceState.js'
@@ -18,7 +19,7 @@ const GENERIC_END_ERROR = 'Something went wrong while ending your interview.'
 function Interview() {
   const { sessionId } = useParams()
 
-  // 'loading' | 'error' | 'restore_failed' | 'ready' | 'completed'
+  // 'loading' | 'error' | 'restore_failed' | 'welcome' | 'ready' | 'completed'
   const [phase, setPhase] = useState('loading')
   const [loadError, setLoadError] = useState(null)
   const [sessionMeta, setSessionMeta] = useState(null)
@@ -97,6 +98,11 @@ function Interview() {
           // /interviews/{id}, so the local transcript can't show them —
           // the transcript panel uses this only to disclose that gap.
           questionsAnsweredAtLoad: interview.questions_answered ?? 0,
+          // The candidate's own persisted topic plan, exactly as the
+          // backend created it — the real, non-fabricated source for the
+          // roadmap (see InterviewRoadmap.jsx). Resumed sessions get this
+          // too, from the same GET response.
+          topics: interview.topics ?? [],
         })
 
         if (interview.status === 'COMPLETED') {
@@ -108,7 +114,11 @@ function Interview() {
           const started = await startInterview(sessionId)
           if (cancelled) return
           setQuestion(started.question)
-          setPhase('ready')
+          // A brief spoken opening before the first real question — only
+          // for a genuinely fresh start (this branch never runs for a
+          // resumed IN_PROGRESS session below), so a reload mid-interview
+          // never re-plays it.
+          setPhase('welcome')
           return
         }
 
@@ -180,7 +190,13 @@ function Interview() {
       idempotencyRef.current = { key: null, answer: null }
       setTranscript((entries) => [
         ...entries,
-        { questionId: question.id, questionText: question.text, leadIn: question.lead_in, answer: trimmedAnswer },
+        {
+          questionId: question.id,
+          questionText: question.text,
+          leadIn: question.lead_in,
+          answer: trimmedAnswer,
+          topic: question.topic,
+        },
       ])
       setAnswer('')
 
@@ -255,6 +271,13 @@ function Interview() {
     setRetryCount((count) => count + 1)
   }
 
+  // The candidate's own explicit move past the spoken welcome — always
+  // reachable immediately (see WelcomeIntro), independent of whether the
+  // intro's own speech has finished playing.
+  function handleBeginInterview() {
+    setPhase('ready')
+  }
+
   // The candidate's explicit "end this interview now" — the existing
   // POST /interviews/{id}/complete endpoint, never a second completion
   // mechanism. Refused while an answer submission is in flight (both would
@@ -313,6 +336,10 @@ function Interview() {
     )
   }
 
+  if (phase === 'welcome') {
+    return <WelcomeIntro roleLabel={ROLE_LABELS[sessionMeta?.role] ?? sessionMeta?.role} onBegin={handleBeginInterview} />
+  }
+
   // Voice is the interview — the room is the only interview workspace, not
   // one of two presentations. It reads the exact same
   // `question`/`answer`/`handleFinishAnswer`/`voice` state this page has
@@ -330,6 +357,8 @@ function Interview() {
       headingRef={questionHeadingRef}
       transcript={transcript}
       earlierAnswersCount={sessionMeta?.questionsAnsweredAtLoad ?? 0}
+      topics={sessionMeta?.topics ?? []}
+      currentTopic={question?.topic}
       onEndInterview={handleEndInterview}
       ending={isEnding}
       submitError={submitError}

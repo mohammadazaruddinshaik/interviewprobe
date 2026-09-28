@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Mic } from 'lucide-react'
+import { ProbeMark } from '../../ui/InterviewProbeLoader.jsx'
 import { VOICE_STATUS } from '../../../voice/voiceState.js'
 
 // The exact candidate-facing microphone status this room has always
@@ -10,7 +11,7 @@ const STATUS_COPY = {
     hint: "Speak naturally — I'll transcribe in real time.",
   },
   [VOICE_STATUS.CANDIDATE_SPEAKING]: { label: 'Hearing you', hint: "Speak naturally — I'll transcribe in real time." },
-  [VOICE_STATUS.PROCESSING]: { label: 'Processing your answer…', hint: 'Finishing up the transcript.' },
+  [VOICE_STATUS.PROCESSING]: { label: 'Reviewing your answer', hint: 'Finishing up the transcript.' },
 }
 
 const ACTIVE_STATUSES = [VOICE_STATUS.CANDIDATE_LISTENING, VOICE_STATUS.CANDIDATE_SPEAKING, VOICE_STATUS.PROCESSING]
@@ -71,7 +72,11 @@ function VoiceStatusBar({ status }) {
           isActive ? 'bg-primary text-white shadow-glass-sm' : 'bg-glass text-muted'
         }`}
       >
-        <Mic className="h-4.5 w-4.5" strokeWidth={1.75} aria-hidden="true" />
+        {status === VOICE_STATUS.PROCESSING ? (
+          <ProbeMark size="sm" tone="current" />
+        ) : (
+          <Mic className="h-4.5 w-4.5" strokeWidth={1.75} aria-hidden="true" />
+        )}
       </span>
       <div className="min-w-0 flex-1">
         <p role="status" aria-live="polite" className={`text-sm font-semibold ${isActive ? 'text-primary' : 'text-ink'}`}>

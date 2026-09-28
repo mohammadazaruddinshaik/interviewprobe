@@ -19,6 +19,7 @@ from app.redis.keys import InterviewRedisKeys
 from app.redis.rate_limit import AnswerRateLimiter, FixedWindowRateLimiter
 from app.redis.runtime_state_service import RuntimeStateService
 from app.repositories.interview_repository import InterviewRepository
+from app.resume.service import ResumeService
 from app.services.interview_service import InterviewService
 from app.services.result_service import ResultService
 from app.voice.base import SttAuthProvider, TTSProvider
@@ -117,6 +118,18 @@ def get_result_service(
     return ResultService(repository, evaluation_service)
 
 
+def get_resume_service(
+    repository: InterviewRepository = Depends(get_interview_repository),
+    llm_provider: LLMProvider = Depends(get_llm_provider),
+) -> ResumeService:
+    # A sibling of get_interview_service/get_evaluation_service, sharing
+    # the same request-scoped repository — needs the LLM provider for
+    # structured resume parsing (app.resume.parser.LLMResumeParser) but no
+    # InterviewWorkflow/knowledge service, same reasoning as
+    # get_evaluation_service above.
+    return ResumeService(repository, llm_provider, settings.resume_max_file_size_bytes)
+
+
 def get_runtime_state_service(
     repository: InterviewRepository = Depends(get_interview_repository),
     redis_client: Redis = Depends(get_redis_client),
@@ -196,6 +209,19 @@ async def enforce_interview_start_rate_limit(
         limit=settings.interview_start_rate_limit,
         window_seconds=settings.interview_start_rate_window_seconds,
         message="Too many interview start requests. Please try again later.",
+    )
+
+
+async def enforce_resume_upload_rate_limit(
+    request: Request, redis_client: Redis = Depends(get_redis_client)
+) -> None:
+    await _enforce_client_rate_limit(
+        request,
+        redis_client,
+        namespace="resume:upload",
+        limit=settings.resume_upload_rate_limit,
+        window_seconds=settings.resume_upload_rate_window_seconds,
+        message="Too many resume upload requests. Please try again later.",
     )
 
 

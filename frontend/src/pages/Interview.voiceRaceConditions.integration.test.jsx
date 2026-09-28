@@ -82,6 +82,8 @@ function renderInterview() {
 
 async function renderReadyInterview() {
   renderInterview()
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Begin' })).toBeTruthy())
+  fireEvent.click(screen.getByRole('button', { name: 'Begin' }))
   await waitFor(() => expect(screen.getByText(QUESTION_TEXT)).toBeTruthy())
   // The room auto-speaks the question as soon as it's ready — wait for the
   // speaker button to flip into its "speaking" (Stop) state.

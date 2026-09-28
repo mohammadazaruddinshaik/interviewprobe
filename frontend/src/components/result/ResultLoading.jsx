@@ -1,3 +1,5 @@
+import InterviewProbeLoader from '../ui/InterviewProbeLoader.jsx'
+
 // A skeleton shaped like the real layout below it (summary + score card,
 // then breakdown, then feedback) rather than generic bars — so the page
 // doesn't visually jump once the real result arrives. Never renders a
@@ -12,6 +14,7 @@ function ResultLoading() {
       <p className="sr-only" role="status">
         Loading your results…
       </p>
+      <InterviewProbeLoader label="Preparing your evaluation" className="py-4" />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <SkeletonBlock className="h-32" />
         <SkeletonBlock className="h-32" />

@@ -13,8 +13,6 @@ const TABS = ['Questions', 'Transcript']
 function TranscriptPanel({
   transcript,
   currentQuestionText,
-  currentAnswer,
-  interimTranscript,
   earlierAnswersCount = 0,
   className = '',
 }) {
@@ -117,10 +115,13 @@ function TranscriptPanel({
             ))}
             {hasCurrentQuestion && (
               <div className="flex flex-col gap-2">
+                {/* The candidate's own live answer is never duplicated here
+                    — it appears exactly once, in the live-transcript strip
+                    above the voice dock while speaking, then once more,
+                    finalized, in this same list once Finish Answer actually
+                    submits it (as one of the `transcript.map` entries
+                    above). */}
                 <TranscriptMessage speaker="interviewer" text={currentQuestionText} emphasized />
-                {(currentAnswer || interimTranscript) && (
-                  <TranscriptMessage speaker="candidate" text={currentAnswer || interimTranscript} emphasized live />
-                )}
               </div>
             )}
           </div>
@@ -132,7 +133,7 @@ function TranscriptPanel({
 
 // An interview transcript entry, not a chat bubble — plain identity +
 // text, no message-app chrome (timestamps, tails, alternating alignment).
-function TranscriptMessage({ speaker, text, emphasized = false, live = false }) {
+function TranscriptMessage({ speaker, text, emphasized = false }) {
   const isInterviewer = speaker === 'interviewer'
 
   return (
@@ -148,14 +149,7 @@ function TranscriptMessage({ speaker, text, emphasized = false, live = false }) 
       )}
       <div className="min-w-0">
         <p className="text-xs font-semibold text-ink">{isInterviewer ? 'AI Interviewer' : 'You'}</p>
-        <p className="text-sm leading-relaxed text-ink">
-          {text}
-          {live && (
-            <span aria-hidden="true" className="motion-safe:animate-pulse">
-              …
-            </span>
-          )}
-        </p>
+        <p className="text-sm leading-relaxed text-ink">{text}</p>
       </div>
     </div>
   )

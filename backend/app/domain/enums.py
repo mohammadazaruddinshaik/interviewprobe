@@ -80,3 +80,22 @@ class InterviewTopicStatus(StrEnum):
     PENDING = "PENDING"
     IN_PROGRESS = "IN_PROGRESS"
     COMPLETED = "COMPLETED"
+
+
+class ResumeExtractionStatus(StrEnum):
+    """An uploaded resume's processing state (`interview_resumes.status`).
+
+    Upload processing runs synchronously within the upload request today,
+    so a client only ever observes UPLOADED transiently before the same
+    response settles on READY or FAILED — but every intermediate state is
+    still persisted at each step (not just the final one), so a row never
+    misrepresents an in-flight/crashed attempt as one that never started,
+    and an async worker can pick these up unchanged later without a status
+    model migration.
+    """
+
+    UPLOADED = "UPLOADED"
+    EXTRACTING = "EXTRACTING"
+    PARSING = "PARSING"
+    READY = "READY"
+    FAILED = "FAILED"
