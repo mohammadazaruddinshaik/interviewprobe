@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 90" role="img" aria-label="InterviewProbe placeholder logo">
+  <g transform="translate(4 8)">
+    <rect x="0" y="0" width="74" height="74" rx="18" fill="#F5D63D"/>
+    <path d="M16 18h18v18H16zM40 18h18v18H40zM16 42h18v18H16zM40 42h18v18H40z" fill="#123B25"/>
+    <circle cx="37" cy="37" r="8" fill="#F7F3E8"/>
+  </g>
+  <text x="98" y="58" font-family="Arial, Helvetica, sans-serif" font-size="42" font-weight="800" fill="#11140F">InterviewProbe</text>
+</svg>
