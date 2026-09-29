@@ -1,6 +1,6 @@
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from sqlalchemy.orm import Session
@@ -16,11 +16,13 @@ from app.domain.enums import (
     Role,
 )
 from app.domain.roles import InvalidRoleTopicError, validate_role_topics
+from app.investigation.investigator import ClaimInvestigator
+from app.investigation.models import ClaimInvestigation, InvestigationEvidence
 from app.models.interview_message import InterviewMessage
 from app.models.interview_question import InterviewQuestion
 from app.models.interview_session import InterviewSession
 from app.models.interview_topic import InterviewTopicEntry
-from app.planning.models import InterviewPlanningConstraints, build_planning_input
+from app.planning.models import InterviewPlanningConstraints, build_claim_id, build_planning_input
 from app.planning.planner import InterviewPlanner
 from app.repositories.interview_repository import InterviewRepository
 from app.resume.models import ResumeProfile
@@ -68,11 +70,48 @@ class InvalidQuestionError(InterviewServiceError):
     pass
 
 
+class InterviewExpiredError(InterviewServiceError):
+    """Raised when the authoritative interview deadline has passed."""
+
+
 class InvalidRoleTopicSelectionError(InterviewServiceError):
     """Raised when the requested topics are not valid for the requested
     role. Wraps `app.domain.roles.InvalidRoleTopicError` so the API layer
     only ever maps `InterviewServiceError` subclasses, never a domain
     exception, to an HTTP response."""
+
+
+def get_interview_deadline(
+    session: InterviewSession,
+    max_duration_minutes: int = DEFAULT_MAX_DURATION_MINUTES,
+) -> datetime | None:
+    """Return the authoritative interview deadline derived from the
+    server-side ``started_at`` timestamp.  Returns ``None`` for sessions
+    that have not started yet (no deadline to enforce)."""
+    if session.started_at is None:
+        return None
+    return session.started_at + timedelta(minutes=max_duration_minutes)
+
+
+def is_interview_expired(
+    session: InterviewSession,
+    now: datetime | None = None,
+    max_duration_minutes: int = DEFAULT_MAX_DURATION_MINUTES,
+) -> bool:
+    """``True`` when the authoritative deadline has passed.  Sessions that
+    have not started yet are never expired."""
+    deadline = get_interview_deadline(session, max_duration_minutes)
+    if deadline is None:
+        return False
+    if now is None:
+        now = datetime.now(UTC)
+    # Normalise to UTC-aware: SQLite strips tzinfo on round-trip, but the
+    # value is always UTC (set via ``datetime.now(UTC)``).
+    if deadline.tzinfo is None:
+        deadline = deadline.replace(tzinfo=UTC)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=UTC)
+    return now >= deadline
 
 
 class InterviewService:
@@ -87,6 +126,7 @@ class InterviewService:
         repository: InterviewRepository,
         workflow: "InterviewWorkflow",
         planner: InterviewPlanner | None = None,
+        investigator: ClaimInvestigator | None = None,
     ):
         self.repository = repository
         # Shares this service's repository (and therefore its DB session),
@@ -99,6 +139,7 @@ class InterviewService:
         # durable mutation below is this service's responsibility.
         self.workflow = workflow
         self.planner = planner
+        self.investigator = investigator
 
     @property
     def _db(self) -> Session:
@@ -241,6 +282,13 @@ class InterviewService:
 
             question = self._get_current_question_or_raise(session, question_id)
 
+            # ── Deadline pre-check ──────────────────────────────────
+            # If the authoritative deadline has already passed, persist the
+            # candidate's answer and finalize the session immediately —
+            # skip the expensive LLM workflow entirely.
+            if is_interview_expired(session):
+                return self._finalize_expired_answer(session, question, answer)
+
             # Invoke the graph BEFORE any durable mutation — see
             # `start_interview` for the same rationale. Only the current
             # turn's context is handed to the workflow; the durable
@@ -264,13 +312,19 @@ class InterviewService:
                 content=answer,
             )
 
-            # The question limit always wins, regardless of what the graph
-            # decided — `validate_decision` already enforces this (see
-            # decision_validator.py), but backend state remains the final
-            # authority rather than trusting the graph's output alone.
+            # ── Deadline post-check ─────────────────────────────────
+            # The LLM workflow may have taken long enough for the deadline
+            # to pass while processing.  The candidate's answer is already
+            # persisted above; we simply finalize instead of continuing.
+            interview_should_end = (
+                next_action.action == "END"
+                or next_question_number > session.question_limit
+                or is_interview_expired(session)
+            )
+
             next_question: InterviewQuestion | None = None
             lead_in: str | None = None
-            if next_action.action != "END" and next_question_number <= session.question_limit:
+            if not interview_should_end:
                 topic_transition = result["topic_transition"]
                 self.topic_progression_service.apply_transition_without_commit(
                     session_id, topic_transition
@@ -302,6 +356,8 @@ class InterviewService:
                     completed_at=datetime.now(UTC),
                     version=next_version,
                 )
+
+            await self._investigate_relevant_claims(session_id, question)
 
             self._db.commit()
         except Exception:
@@ -455,6 +511,132 @@ class InterviewService:
             for seq, planned in enumerate(plan.planned_topics, start=1)
         ]
         self.repository.create_topics(topic_entries)
+
+    # ------------------------------------------------------------------
+    # Claim investigation
+    # ------------------------------------------------------------------
+
+    async def _investigate_relevant_claims(
+        self, session_id: uuid.UUID, question: InterviewQuestion
+    ) -> None:
+        """Investigate resume claims associated with the answered question's topic.
+
+        Runs only when an investigator is configured and the question's
+        topic has related claims in the plan. Errors are caught and logged
+        — investigation must never block the main answer flow."""
+        if self.investigator is None:
+            return
+
+        try:
+            plan = self.repository.load_plan(session_id)
+            if plan is None:
+                return
+
+            planned_topic = next(
+                (pt for pt in plan.planned_topics if pt.topic == question.topic),
+                None,
+            )
+            if planned_topic is None or not planned_topic.related_claim_ids:
+                return
+
+            resume_profile = self._load_resume_profile(session_id)
+            if resume_profile is None or not resume_profile.claims:
+                return
+
+            claim_by_id: dict[str, "ResumeClaim"] = {}
+            for claim in resume_profile.claims:
+                claim_by_id[build_claim_id(claim)] = claim
+
+            target_claim_ids = [
+                cid for cid in planned_topic.related_claim_ids if cid in claim_by_id
+            ]
+            if not target_claim_ids:
+                return
+
+            all_questions = self.repository.get_questions(session_id)
+            all_messages = self.repository.get_messages(session_id)
+            candidate_answers = {
+                m.question_id: m for m in all_messages if m.role == MessageRole.CANDIDATE
+            }
+
+            topic_to_claim_ids: dict[InterviewTopic, set[str]] = {}
+            for pt in plan.planned_topics:
+                if pt.related_claim_ids:
+                    topic_to_claim_ids[pt.topic] = set(pt.related_claim_ids)
+
+            existing = self.repository.load_claim_investigations(session_id)
+            inv_by_claim: dict[str, ClaimInvestigation] = {
+                inv.claim_id: inv for inv in existing
+            }
+
+            for claim_id in target_claim_ids:
+                evidence: list[InvestigationEvidence] = []
+                for q in all_questions:
+                    topic_claims = topic_to_claim_ids.get(q.topic, set())
+                    if claim_id not in topic_claims:
+                        continue
+                    answer_msg = candidate_answers.get(q.id)
+                    if answer_msg is None:
+                        continue
+                    evidence.append(
+                        InvestigationEvidence(
+                            question_sequence=q.sequence_number,
+                            question_text=q.question_text,
+                            answer_text=answer_msg.content,
+                        )
+                    )
+
+                if not evidence:
+                    continue
+
+                claim = claim_by_id[claim_id]
+                result = await self.investigator.investigate(claim, claim_id, evidence)
+
+                inv_by_claim[claim_id] = ClaimInvestigation(
+                    claim_id=claim_id,
+                    status=result.status,
+                    evidence_summary=result.evidence_summary,
+                    rationale=result.rationale,
+                )
+
+            updated = list(inv_by_claim.values())
+            self.repository.save_claim_investigations(session_id, updated)
+
+        except Exception:
+            logger.warning(
+                "Claim investigation failed for session %s; continuing without investigation.",
+                session_id,
+                exc_info=True,
+            )
+
+    # ------------------------------------------------------------------
+    # Deadline enforcement
+    # ------------------------------------------------------------------
+
+    def _finalize_expired_answer(
+        self,
+        session: InterviewSession,
+        question: InterviewQuestion,
+        answer: str,
+    ) -> tuple[InterviewSession, InterviewQuestion | None, str | None]:
+        """Persist the candidate's answer and complete the session when the
+        deadline has already passed before LLM processing begins.  The
+        candidate's answer is never lost — it was submitted in time to be
+        recorded, even though the interview cannot continue."""
+        self._create_message(
+            session=session,
+            question=question,
+            role=MessageRole.CANDIDATE,
+            content=answer,
+        )
+        self.repository.update_session(
+            session,
+            status=InterviewStatus.COMPLETED,
+            completed_at=datetime.now(UTC),
+            version=session.version + 1,
+        )
+        self._db.commit()
+        return session, None, None
 
     # ------------------------------------------------------------------
     # Internal helpers

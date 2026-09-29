@@ -10,7 +10,7 @@ from uuid import UUID
 from docx import Document
 from pydantic import BaseModel
 
-from app.domain.enums import InterviewTopic, Role
+from app.domain.enums import InterviewTopic, MessageRole, Role
 from app.knowledge.embedding.base import EmbeddingProvider
 from app.knowledge.models import KnowledgeChunk, KnowledgeSearchResult
 from app.knowledge.store.base import KnowledgeStore
@@ -218,6 +218,9 @@ class FakeInterviewRepository:
         current_question=None,
         questions_by_id: dict[UUID, object] | None = None,
         questions: list | None = None,
+        plan=None,
+        resume=None,
+        messages: list | None = None,
     ):
         self.session = session
         self.topics = topics or []
@@ -230,6 +233,10 @@ class FakeInterviewRepository:
         # 0 that would make every existing FakeInterviewRepository(...) test
         # look like a brand-new topic.
         self.questions = questions if questions is not None else ([current_question] if current_question else [])
+        self._plan = plan
+        self._resume = resume
+        self._messages = messages or []
+        self._claim_investigations: list = []
 
     def get_session(self, session_id: UUID):
         if self.session is not None and self.session.id == session_id:
@@ -247,6 +254,21 @@ class FakeInterviewRepository:
 
     def get_questions(self, session_id: UUID):
         return self.questions
+
+    def get_messages(self, session_id: UUID):
+        return self._messages
+
+    def load_plan(self, session_id: UUID):
+        return self._plan
+
+    def get_resume(self, session_id: UUID):
+        return self._resume
+
+    def load_claim_investigations(self, session_id: UUID):
+        return list(self._claim_investigations)
+
+    def save_claim_investigations(self, session_id: UUID, investigations):
+        self._claim_investigations = list(investigations)
 
 
 def _deterministic_vector(text: str, dimension: int) -> list[float]:

@@ -2,7 +2,9 @@ from typing import TypedDict
 from uuid import UUID
 
 from app.domain.enums import Difficulty, InterviewTopic, Role
+from app.investigation.models import ClaimInvestigationContext
 from app.knowledge.models import KnowledgeSearchResult
+from app.resume.models import ResumeClaim
 from app.workflows.interview.models import (
     AnswerAnalysis,
     GeneratedQuestion,
@@ -48,6 +50,16 @@ class InterviewAgentState(TypedDict, total=False):
     next_action: NextAction | None  # final, validated decision
     topic_transition: TopicTransition | None
     decision_fallback_used: bool
+
+    # Pre-computed by `load_interview_context` from the interview plan
+    # and resume profile: topic value -> list of matching ResumeClaims.
+    # Empty dict when no plan/resume/claims exist (legacy sessions).
+    resume_claims_by_topic: dict[str, list[ResumeClaim]]
+
+    # Pre-computed by `load_interview_context` from persisted claim
+    # investigations: topic value -> compact investigation contexts.
+    # Empty dict when no investigations exist (legacy/resume-free sessions).
+    claim_investigations_by_topic: dict[str, list[ClaimInvestigationContext]]
 
     # Populated by `retrieve_knowledge` (Task 20) — provider-neutral
     # results only, bounded to a small top-k. Never the raw Qdrant

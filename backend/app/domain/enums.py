@@ -115,6 +115,19 @@ class PlannedTopicPriority(StrEnum):
     LOW = "LOW"
 
 
+class ClaimInvestigationStatus(StrEnum):
+    """Evidence-based assessment of a resume claim from interview evidence.
+
+    These are internal evidence-collection statuses, never exposed to the
+    candidate. They describe what evidence exists, not whether a claim is
+    true or false — deliberately, there is no FALSE or LIAR value."""
+
+    SUPPORTED = "SUPPORTED"
+    PARTIALLY_SUPPORTED = "PARTIALLY_SUPPORTED"
+    LIMITED_EVIDENCE = "LIMITED_EVIDENCE"
+    NOT_YET_ESTABLISHED = "NOT_YET_ESTABLISHED"
+
+
 class ResumeRelevance(StrEnum):
     """How strongly a planned topic is driven by candidate-reported resume
     claims. PRIMARY: the topic is planned mainly to probe specific claims.

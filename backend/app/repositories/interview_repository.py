@@ -12,6 +12,7 @@ from app.models.interview_question import InterviewQuestion
 from app.models.interview_resume import InterviewResume
 from app.models.interview_session import InterviewSession
 from app.models.interview_topic import InterviewTopicEntry
+from app.investigation.models import ClaimInvestigation
 from app.planning.models import InterviewPlan
 
 
@@ -211,8 +212,48 @@ class InterviewRepository:
         """Load and reconstruct the domain InterviewPlan for a session.
         Returns None when no plan is persisted. Raises ValidationError
         (via Pydantic) if the persisted JSONB is structurally invalid —
-        corrupted plans do not silently become arbitrary dicts."""
+        corrupted plans do not silently become arbitrary dicts.
+
+        Strips the ``_claim_investigations`` key (written by
+        ``save_claim_investigations``) before validating, since
+        ``InterviewPlan`` has ``extra="forbid"``."""
         record = self.get_plan(session_id)
         if record is None:
             return None
-        return InterviewPlan.model_validate(record.plan)
+        plan_data = record.plan
+        if "_claim_investigations" in plan_data:
+            plan_data = {k: v for k, v in plan_data.items() if k != "_claim_investigations"}
+        return InterviewPlan.model_validate(plan_data)
+
+    # ------------------------------------------------------------------
+    # Claim investigation (stored alongside plan in plan JSONB)
+    # ------------------------------------------------------------------
+
+    def load_claim_investigations(self, session_id: uuid.UUID) -> list[ClaimInvestigation]:
+        """Load persisted claim investigations for a session.
+
+        Returns an empty list when no plan exists or no investigations
+        have been recorded yet."""
+        record = self.get_plan(session_id)
+        if record is None:
+            return []
+        raw = record.plan.get("_claim_investigations", [])
+        return [ClaimInvestigation.model_validate(item) for item in raw]
+
+    def save_claim_investigations(
+        self, session_id: uuid.UUID, investigations: list[ClaimInvestigation]
+    ) -> None:
+        """Persist claim investigations into the plan record's JSONB.
+
+        Reassigns the entire column value so SQLAlchemy detects the
+        mutation (JSONB in-place mutation is not tracked by default).
+        Only flushes; the caller owns the transaction boundary."""
+        record = self.get_plan(session_id)
+        if record is None:
+            return
+        plan_data = dict(record.plan)
+        plan_data["_claim_investigations"] = [
+            inv.model_dump(mode="json") for inv in investigations
+        ]
+        record.plan = plan_data
+        self.session.flush()

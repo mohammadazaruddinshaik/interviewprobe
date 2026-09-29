@@ -36,6 +36,7 @@ from app.resume.exceptions import (
     UnsupportedResumeFileTypeError,
 )
 from app.services.interview_service import (
+    InterviewExpiredError,
     InterviewNotFoundError,
     InvalidInterviewStateError,
     InvalidQuestionError,
@@ -114,6 +115,7 @@ _SERVICE_ERROR_STATUS_CODES: dict[type[Exception], tuple[int, str]] = {
     InvalidInterviewStateError: (409, "INVALID_INTERVIEW_STATE"),
     InvalidQuestionError: (409, "INVALID_QUESTION"),
     InvalidRoleTopicSelectionError: (422, "INVALID_ROLE_TOPIC"),
+    InterviewExpiredError: (409, "INTERVIEW_EXPIRED"),
     InterviewLockBusyError: (409, "INTERVIEW_BUSY"),
     EvaluationLockBusyError: (409, "EVALUATION_BUSY"),
     IdempotencyKeyReusedError: (409, "IDEMPOTENCY_KEY_REUSED"),

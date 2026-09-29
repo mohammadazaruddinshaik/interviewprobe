@@ -12,6 +12,7 @@ from app.knowledge.factory import get_knowledge_retrieval_service as _get_config
 from app.knowledge.retrieval_service import KnowledgeRetrievalService
 from app.llm.base import LLMProvider
 from app.llm.factory import get_llm_provider as _get_configured_llm_provider
+from app.investigation.investigator import ClaimInvestigator, LLMClaimInvestigator
 from app.planning.planner import InterviewPlanner, LLMInterviewPlanner
 from app.redis.client import get_redis_client
 from app.redis.exceptions import RateLimitExceededError
@@ -89,12 +90,19 @@ def get_interview_planner(
     return LLMInterviewPlanner(llm_provider)
 
 
+def get_claim_investigator(
+    llm_provider: LLMProvider = Depends(get_llm_provider),
+) -> ClaimInvestigator:
+    return LLMClaimInvestigator(llm_provider)
+
+
 def get_interview_service(
     repository: InterviewRepository = Depends(get_interview_repository),
     workflow: InterviewWorkflow = Depends(get_interview_workflow),
     planner: InterviewPlanner = Depends(get_interview_planner),
+    investigator: ClaimInvestigator = Depends(get_claim_investigator),
 ) -> InterviewService:
-    return InterviewService(repository, workflow, planner=planner)
+    return InterviewService(repository, workflow, planner=planner, investigator=investigator)
 
 
 def get_evaluation_service(
