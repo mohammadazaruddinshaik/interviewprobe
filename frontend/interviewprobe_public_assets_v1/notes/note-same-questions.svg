@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 240">
+
+<g fill="#11140F" font-family="cursive" font-size="30" font-style="italic">
+<text x="20" y="55">Same questions</text>
+<text x="20" y="95">don't build</text>
+<text x="20" y="135">better engineers.</text>
+</g>
+<path d="M250 55 C320 70 325 120 300 165" fill="none" stroke="#11140F" stroke-width="3" stroke-linecap="round"/>
+<path d="M288 150 L301 168 L316 151" fill="none" stroke="#11140F" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+</svg>

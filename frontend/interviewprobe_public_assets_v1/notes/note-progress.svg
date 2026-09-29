@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 210">
+
+<g fill="#11140F" font-family="cursive" font-size="30" font-style="italic">
+<text x="30" y="60">From practice</text>
+<text x="30" y="100">to progress.</text>
+</g>
+<path d="M25 150 C90 115 160 120 250 70" fill="none" stroke="#11140F" stroke-width="3" stroke-linecap="round"/>
+<path d="M235 66 L255 68 L244 84" fill="none" stroke="#11140F" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+</svg>

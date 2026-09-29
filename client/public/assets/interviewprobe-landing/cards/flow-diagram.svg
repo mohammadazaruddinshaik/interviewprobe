@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 390 280">
-
-<rect x="90" y="12" width="120" height="52" rx="5" fill="#FFFDF7" stroke="#11140F" stroke-width="2"/><text x="150" y="45" text-anchor="middle" font-family="cursive" font-size="20" fill="#11140F">Cache</text>
-<rect x="15" y="115" width="135" height="52" rx="5" fill="#FFFDF7" stroke="#11140F" stroke-width="2"/><text x="82" y="148" text-anchor="middle" font-family="cursive" font-size="20" fill="#11140F">Latency</text>
-<rect x="225" y="115" width="150" height="52" rx="5" fill="#FFFDF7" stroke="#11140F" stroke-width="2"/><text x="300" y="148" text-anchor="middle" font-family="cursive" font-size="20" fill="#11140F">Consistency</text>
-<rect x="105" y="215" width="185" height="54" rx="5" fill="#F5D63D" stroke="#11140F" stroke-width="2"/><text x="197" y="249" text-anchor="middle" font-family="cursive" font-size="20" fill="#11140F">Trade-offs ?</text>
-<g fill="none" stroke="#11140F" stroke-width="2"><path d="M150 64 L85 112"/><path d="M150 64 L298 112"/><path d="M82 167 L160 213"/><path d="M300 167 L235 213"/><path d="M195 215 C315 180 360 220 330 130"/></g>
-
-</svg>
