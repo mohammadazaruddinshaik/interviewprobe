@@ -199,3 +199,42 @@ class ResumeResponse(BaseModel):
     # Only set (non-null) when status is FAILED — a candidate-safe message,
     # never a raw exception/provider string. See app/resume/service.py.
     extraction_error: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Catalog — GET /interviews/catalog. A read-only projection of the existing
+# role catalog (app/domain/roles.py), the Difficulty enum and the
+# CreateInterviewRequest bounds; nothing here is stored or duplicated.
+# ---------------------------------------------------------------------------
+
+
+class CatalogTopicResponse(BaseModel):
+    value: InterviewTopic
+    label: str
+    description: str
+
+
+class CatalogRoleResponse(BaseModel):
+    value: Role
+    label: str
+    description: str
+    # Only the topics valid for THIS role, in catalog order.
+    topics: list[CatalogTopicResponse]
+
+
+class CatalogDifficultyResponse(BaseModel):
+    # The enum has no labels or descriptions, so none are exposed.
+    value: Difficulty
+
+
+class CatalogRangeResponse(BaseModel):
+    min: int
+    max: int
+
+
+class InterviewCatalogResponse(BaseModel):
+    roles: list[CatalogRoleResponse]
+    difficulties: list[CatalogDifficultyResponse]
+    # Both ranges are read from CreateInterviewRequest's own validation rules.
+    question_limit: CatalogRangeResponse
+    topic_limit: CatalogRangeResponse

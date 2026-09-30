@@ -8,6 +8,9 @@ from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 from sqlalchemy.orm import Session
 
+from app.api.routes.auth import router as auth_router
+from app.auth.exceptions import AuthNotConfiguredError, AuthenticationRequiredError, InvalidGoogleCredentialError
+from app.api.routes.dashboard import router as dashboard_router
 from app.api.routes.interviews import router as interviews_router
 from app.api.routes.voice import router as voice_router
 from app.core.config import settings
@@ -73,12 +76,43 @@ app = FastAPI(title=settings.app_name, lifespan=lifespan)
 # `allow_credentials` stays at its default (False) — only the specific
 # local dev origins, methods, and headers actually needed are allowed.
 # `Idempotency-Key` (Task 26) is required on answer submissions.
+# Authentication uses an HttpOnly session cookie, so credentialed CORS is
+# enabled — which is only safe with EXACT origins (never "*"; enforced by a
+# validator on `cors_allowed_origins`).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allowed_origins,
+    allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type", "Idempotency-Key"],
 )
+
+# CSRF strategy (cookie auth): browsers attach the session cookie to
+# cross-site requests, so every state-changing request is checked here.
+# - An `Origin` header, when present, must exactly match a configured
+#   frontend origin (CORS_ALLOWED_ORIGINS) — otherwise 403.
+# - A state-changing request that carries the session cookie but NO Origin
+#   header is rejected too (browsers always send Origin on such requests; a
+#   missing one is not a legitimate browser flow).
+# - Combined with SameSite on the cookie and exact-origin credentialed CORS
+#   (other origins cannot read responses), no separate CSRF token is needed;
+#   none is issued, so there is no unvalidated pseudo-token.
+_UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+@app.middleware("http")
+async def enforce_csrf_origin(request: Request, call_next):
+    if request.method in _UNSAFE_METHODS:
+        origin = request.headers.get("origin")
+        has_session_cookie = settings.session_cookie_name in request.cookies
+        if (origin is not None and origin not in settings.cors_allowed_origins) or (
+            origin is None and has_session_cookie
+        ):
+            return JSONResponse(
+                status_code=403,
+                content={"error": {"code": "ORIGIN_NOT_ALLOWED", "message": "Request origin is not allowed."}},
+            )
+    return await call_next(request)
 
 
 @app.get("/health")
@@ -146,6 +180,22 @@ def _handle_rate_limit_exceeded(request: Request, exc: RateLimitExceededError) -
 
 
 app.add_exception_handler(RateLimitExceededError, _handle_rate_limit_exceeded)
+
+
+_AUTH_ERROR_STATUS_CODES: dict[type[Exception], tuple[int, str]] = {
+    AuthenticationRequiredError: (401, "UNAUTHENTICATED"),
+    InvalidGoogleCredentialError: (401, "INVALID_GOOGLE_CREDENTIAL"),
+    AuthNotConfiguredError: (503, "AUTH_NOT_CONFIGURED"),
+}
+
+
+def _handle_auth_error(request: Request, exc: Exception) -> JSONResponse:
+    status_code, code = _AUTH_ERROR_STATUS_CODES[type(exc)]
+    return JSONResponse(status_code=status_code, content={"error": {"code": code, "message": str(exc)}})
+
+
+for _exc_type in _AUTH_ERROR_STATUS_CODES:
+    app.add_exception_handler(_exc_type, _handle_auth_error)
 
 
 def _handle_redis_protection_unavailable(request: Request, exc: RedisProtectionUnavailableError) -> JSONResponse:
@@ -275,5 +325,7 @@ for _exc_type in _VOICE_ERROR_RESPONSES:
     app.add_exception_handler(_exc_type, _handle_voice_error)
 
 
+app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
+app.include_router(dashboard_router, prefix="/api/v1/dashboard", tags=["dashboard"])
 app.include_router(interviews_router, prefix="/api/v1/interviews", tags=["interviews"])
 app.include_router(voice_router, prefix="/api/v1/voice", tags=["voice"])

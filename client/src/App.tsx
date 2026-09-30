@@ -1,6 +1,7 @@
 import Navigation from '@/features/landing/components/Navigation'
 import Hero from '@/features/landing/components/Hero'
 import FeaturesSection from '@/features/landing/components/FeaturesSection'
+import HowItWorksSection from '@/features/landing/components/HowItWorksSection'
 import Footer from '@/features/landing/components/Footer'
 import { useLandingAnimations } from '@/hooks/useLandingAnimations'
 
@@ -12,6 +13,7 @@ function App() {
       <Navigation />
       <Hero />
       <FeaturesSection />
+      <HowItWorksSection />
       <Footer />
     </div>
   )

@@ -1,4 +1,5 @@
 import { ArrowRight, Play, Sparkles } from 'lucide-react'
+import PaintHighlight from './PaintHighlight'
 
 const PAPERS = [
   {
@@ -41,9 +42,10 @@ function Hero() {
           AI Interviewer for your
           <br />
           real technical{' '}
-          <mark className="inline-block rounded-sm bg-yellow px-3 text-deep md:h-[66px] md:translate-y-[2px] md:leading-[66px]">
-            growth.
-          </mark>
+          <PaintHighlight anim="hero-paint" className="pl-3 pr-[2px] md:h-[66px] md:translate-y-[2px] md:leading-[66px]">
+            growth
+          </PaintHighlight>
+          .
         </h1>
 
         <p data-anim="hero-text" className="mt-[14px] max-w-[600px] font-serif lg:translate-x-[9px] text-base leading-[1.32] text-ink sm:text-[19px] md:text-xl">
@@ -57,13 +59,13 @@ function Hero() {
         >
           <a
             href="#start-practicing"
-            className="group inline-flex h-[51px] w-full max-w-[320px] items-center justify-center gap-[15px] rounded-[10px] bg-forest text-[15px] font-semibold tracking-[-0.005em] text-cream shadow-[inset_0_1px_0_rgb(255_255_255/0.12),0_1px_2px_rgb(20_42_11/0.3),0_8px_16px_-8px_rgb(20_42_11/0.5)] outline-offset-2 transition-[background-color,box-shadow,translate] duration-200 ease-out hover:-translate-y-px hover:bg-forest-light hover:shadow-[inset_0_1px_0_rgb(255_255_255/0.16),0_2px_4px_rgb(20_42_11/0.3),0_12px_20px_-8px_rgb(20_42_11/0.55)] focus-visible:outline-2 focus-visible:outline-forest active:translate-y-0 motion-reduce:transition-none motion-reduce:hover:translate-y-0 sm:w-auto sm:pl-[25px] sm:pr-[22px]"
+            className="group inline-flex h-[51px] w-full max-w-[320px] items-center justify-center gap-[15px] rounded-[10px] bg-forest text-[15px] font-semibold tracking-[-0.005em] text-cream shadow-[inset_0_1px_0_rgb(255_255_255/0.12),0_1px_2px_rgb(20_42_11/0.3),0_8px_16px_-8px_rgb(20_42_11/0.5)] outline-offset-2 transition-[background-color,box-shadow,translate] duration-200 ease-out hover:-translate-y-0.5 hover:bg-forest-light hover:shadow-[inset_0_1px_0_rgb(255_255_255/0.18),0_2px_4px_rgb(20_42_11/0.3),0_14px_22px_-8px_rgb(20_42_11/0.6)] focus-visible:outline-[3px] focus-visible:outline-yellow active:translate-y-0 motion-reduce:transition-none motion-reduce:hover:translate-y-0 sm:w-auto sm:pl-[25px] sm:pr-[22px]"
           >
             Start Practicing Free
             <ArrowRight
               size={16}
               aria-hidden="true"
-              className="transition-transform duration-200 ease-out group-hover:translate-x-[3px] motion-reduce:transition-none motion-reduce:group-hover:translate-x-0"
+              className="transition-transform duration-200 ease-out group-hover:translate-x-[4px] motion-reduce:transition-none motion-reduce:group-hover:translate-x-0"
             />
           </a>
 

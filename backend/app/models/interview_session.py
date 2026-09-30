@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, DateTime, Enum, Integer, String, func
+from sqlalchemy import CheckConstraint, DateTime, Enum, ForeignKey, Index, Integer, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 class InterviewSession(Base):
     __tablename__ = "interview_sessions"
     __table_args__ = (
+        # Dashboard: per-user, status-filtered, completed_at-ordered/range queries.
+        Index("ix_interview_sessions_user_id_status_completed_at", "user_id", "status", "completed_at"),
         CheckConstraint(
             "question_limit >= 3",
             name="ck_interview_sessions_question_limit_min",
@@ -36,6 +38,17 @@ class InterviewSession(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Owner of this interview. Nullable ONLY so pre-authentication rows are
+    # not silently assigned to an arbitrary user: such legacy rows keep a NULL
+    # owner and are unreachable through the API (every owner-scoped query
+    # filters `user_id = <current user>`, which never matches NULL). Every
+    # row created through the API gets the authenticated user's id.
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     role: Mapped[Role] = mapped_column(
         Enum(Role, native_enum=False, create_constraint=False, validate_strings=True, length=50),
         nullable=False,

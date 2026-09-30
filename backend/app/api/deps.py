@@ -1,9 +1,13 @@
 import logging
+import uuid
 
 from fastapi import Depends, Request
 from redis.asyncio import Redis
 from sqlalchemy.orm import Session
 
+from app.auth.exceptions import AuthenticationRequiredError
+from app.auth.google import GoogleIdentityVerifier, get_configured_google_verifier
+from app.auth.service import AuthService
 from app.core.config import settings
 from app.db.session import get_db
 from app.evaluation.service import EvaluationService
@@ -11,6 +15,7 @@ from app.knowledge.exceptions import KnowledgeError
 from app.knowledge.factory import get_knowledge_retrieval_service as _get_configured_knowledge_retrieval_service
 from app.knowledge.retrieval_service import KnowledgeRetrievalService
 from app.llm.base import LLMProvider
+from app.models.user import User
 from app.llm.factory import get_llm_provider as _get_configured_llm_provider
 from app.investigation.investigator import ClaimInvestigator, LLMClaimInvestigator
 from app.planning.planner import InterviewPlanner, LLMInterviewPlanner
@@ -20,9 +25,11 @@ from app.redis.idempotency import IdempotencyStore
 from app.redis.keys import InterviewRedisKeys
 from app.redis.rate_limit import AnswerRateLimiter, FixedWindowRateLimiter
 from app.redis.runtime_state_service import RuntimeStateService
+from app.repositories.dashboard_repository import DashboardRepository
 from app.repositories.interview_repository import InterviewRepository
 from app.resume.service import ResumeService
-from app.services.interview_service import InterviewService
+from app.services.dashboard_service import DashboardService
+from app.services.interview_service import InterviewNotFoundError, InterviewService
 from app.services.result_service import ResultService
 from app.voice.base import SttAuthProvider, TTSProvider
 from app.voice.factory import get_stt_auth_provider as _get_configured_stt_auth_provider
@@ -33,8 +40,49 @@ from app.workflows.interview.graph import InterviewWorkflow
 logger = logging.getLogger(__name__)
 
 
-def get_interview_repository(db: Session = Depends(get_db)) -> InterviewRepository:
-    return InterviewRepository(db)
+def get_auth_service(db: Session = Depends(get_db)) -> AuthService:
+    return AuthService(db, settings.session_lifetime_seconds)
+
+
+def get_google_verifier() -> GoogleIdentityVerifier:
+    # Thin wrapper so tests can override just this dependency with a fake.
+    return get_configured_google_verifier()
+
+
+def get_current_user(request: Request, auth_service: AuthService = Depends(get_auth_service)) -> User:
+    """The single authentication dependency: session cookie -> hashed-token
+    lookup -> active (non-expired, non-revoked) session -> user. Raises
+    AuthenticationRequiredError (HTTP 401) otherwise. User identity comes
+    only from this server-side session, never from request data."""
+    return auth_service.get_user_for_token(request.cookies.get(settings.session_cookie_name))
+
+
+def get_interview_repository(
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+) -> InterviewRepository:
+    # Owner-scoped: every session lookup made through this repository is
+    # filtered by `user_id = current_user.id`, so another user's interview is
+    # indistinguishable from a nonexistent one (404), and new interviews are
+    # stamped with the current user.
+    return InterviewRepository(db, owner_id=current_user.id)
+
+
+def get_dashboard_service(
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+) -> DashboardService:
+    # Scoped to the authenticated user only — the id never comes from the request.
+    return DashboardService(DashboardRepository(db, current_user.id))
+
+
+def require_owned_interview(
+    session_id: uuid.UUID, repository: InterviewRepository = Depends(get_interview_repository)
+) -> uuid.UUID:
+    """Route-level guard, resolved before any handler body: rejects (404)
+    interviews the current user does not own BEFORE Redis locks, idempotency
+    lookups or rate limiting are touched for that session id."""
+    if repository.get_session(session_id) is None:
+        raise InterviewNotFoundError(f"Interview session {session_id} was not found.")
+    return session_id
 
 
 def get_llm_provider() -> LLMProvider:

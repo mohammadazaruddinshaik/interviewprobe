@@ -1,7 +1,7 @@
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, File, Header, UploadFile, status
+from fastapi import APIRouter, Depends, File, Header, Response, UploadFile, status
 from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 
@@ -16,6 +16,7 @@ from app.api.deps import (
     get_result_service,
     get_resume_service,
     get_runtime_state_service,
+    require_owned_interview,
 )
 from app.core.config import settings
 from app.evaluation.service import EvaluationService
@@ -41,6 +42,7 @@ from app.schemas.interview import (
     CompleteInterviewResponse,
     CreateInterviewRequest,
     CreateInterviewResponse,
+    InterviewCatalogResponse,
     EvaluationResponse,
     InterviewResponse,
     InterviewResultResponse,
@@ -54,12 +56,17 @@ from app.schemas.interview import (
     SubmitAnswerResponse,
 )
 from app.resume.service import ResumeService
+from app.services.interview_catalog import build_interview_catalog
 from app.services.interview_service import InterviewService
 from app.services.result_service import ResultService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Resolved before each handler body: 404s interviews the current user does not own
+# (and 401s unauthenticated callers) before locks/idempotency/rate limits are touched.
+_OWNED = [Depends(require_owned_interview)]
 
 
 def _to_question_response(question, lead_in: str | None = None) -> QuestionResponse:
@@ -129,7 +136,16 @@ def create_interview(
     return DataResponse(data=response)
 
 
-@router.post("/{session_id}/start", response_model=DataResponse[StartInterviewResponse])
+@router.get("/catalog", response_model=DataResponse[InterviewCatalogResponse])
+def get_interview_catalog(response: Response) -> DataResponse[InterviewCatalogResponse]:
+    """Public, read-only: the supported roles, each role's valid topics, difficulties and
+    creation limits. Static application configuration (no user data), so no session is required.
+    Declared before the `/{session_id}` routes so "catalog" is never parsed as an interview id."""
+    response.headers["Cache-Control"] = "public, max-age=3600"
+    return DataResponse(data=build_interview_catalog())
+
+
+@router.post("/{session_id}/start", response_model=DataResponse[StartInterviewResponse], dependencies=_OWNED)
 async def start_interview(
     session_id: uuid.UUID,
     service: InterviewService = Depends(get_interview_service),
@@ -164,7 +180,7 @@ async def start_interview(
         await _release_lock_quietly(lock)
 
 
-@router.post("/{session_id}/answers", response_model=DataResponse[SubmitAnswerResponse])
+@router.post("/{session_id}/answers", response_model=DataResponse[SubmitAnswerResponse], dependencies=_OWNED)
 async def submit_answer(
     session_id: uuid.UUID,
     payload: SubmitAnswerRequest,
@@ -311,7 +327,7 @@ async def _release_lock_quietly(lock: InterviewLock) -> None:
         logger.warning("Failed to release interview lock; it will expire via TTL.")
 
 
-@router.get("/{session_id}", response_model=DataResponse[InterviewResponse])
+@router.get("/{session_id}", response_model=DataResponse[InterviewResponse], dependencies=_OWNED)
 def get_interview(
     session_id: uuid.UUID,
     service: InterviewService = Depends(get_interview_service),
@@ -350,7 +366,7 @@ def _to_resume_response(resume) -> ResumeResponse:
     )
 
 
-@router.post("/{session_id}/resume", response_model=DataResponse[ResumeResponse])
+@router.post("/{session_id}/resume", response_model=DataResponse[ResumeResponse], dependencies=_OWNED)
 async def upload_resume(
     session_id: uuid.UUID,
     resume: UploadFile = File(...),
@@ -376,7 +392,7 @@ async def upload_resume(
     return DataResponse(data=_to_resume_response(saved))
 
 
-@router.post("/{session_id}/complete", response_model=DataResponse[CompleteInterviewResponse])
+@router.post("/{session_id}/complete", response_model=DataResponse[CompleteInterviewResponse], dependencies=_OWNED)
 async def complete_interview(
     session_id: uuid.UUID,
     service: InterviewService = Depends(get_interview_service),
@@ -406,7 +422,7 @@ async def complete_interview(
         await _release_lock_quietly(lock)
 
 
-@router.get("/{session_id}/evaluation", response_model=DataResponse[EvaluationResponse])
+@router.get("/{session_id}/evaluation", response_model=DataResponse[EvaluationResponse], dependencies=_OWNED)
 async def get_interview_evaluation(
     session_id: uuid.UUID,
     evaluation_service: EvaluationService = Depends(get_evaluation_service),
@@ -430,7 +446,7 @@ async def get_interview_evaluation(
     return DataResponse(data=response)
 
 
-@router.get("/{session_id}/result", response_model=DataResponse[InterviewResultResponse])
+@router.get("/{session_id}/result", response_model=DataResponse[InterviewResultResponse], dependencies=_OWNED)
 async def get_interview_result(
     session_id: uuid.UUID,
     result_service: ResultService = Depends(get_result_service),

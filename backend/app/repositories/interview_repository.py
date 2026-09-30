@@ -24,20 +24,34 @@ class InterviewRepository:
     the service layer).
     """
 
-    def __init__(self, session: Session):
+    def __init__(self, session: Session, owner_id: uuid.UUID | None = None):
         self.session = session
+        # When set, every interview-session lookup is scoped to this owner
+        # and newly created sessions are stamped with it. The HTTP layer
+        # always constructs the repository with the authenticated user's id.
+        self.owner_id = owner_id
 
     # ------------------------------------------------------------------
     # Sessions
     # ------------------------------------------------------------------
 
     def create_session(self, interview_session: InterviewSession) -> InterviewSession:
+        if self.owner_id is not None:
+            if interview_session.user_id not in (None, self.owner_id):
+                raise ValueError("Cannot create an interview owned by a different user.")
+            interview_session.user_id = self.owner_id
         self.session.add(interview_session)
         self.session.flush()
         return interview_session
 
     def get_session(self, session_id: uuid.UUID) -> InterviewSession | None:
-        return self.session.get(InterviewSession, session_id)
+        if self.owner_id is None:
+            return self.session.get(InterviewSession, session_id)
+        return self.session.execute(
+            select(InterviewSession).where(
+                InterviewSession.id == session_id, InterviewSession.user_id == self.owner_id
+            )
+        ).scalar_one_or_none()
 
     def update_session(self, interview_session: InterviewSession, **changes: Any) -> InterviewSession:
         for field, value in changes.items():

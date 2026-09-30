@@ -14,7 +14,7 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.api.deps import get_claim_investigator, get_interview_planner, get_knowledge_retrieval_service, get_llm_provider
+from app.api.deps import get_current_user, get_claim_investigator, get_interview_planner, get_knowledge_retrieval_service, get_llm_provider
 from app.db.base import Base
 from app.db.session import get_db
 from app.domain.enums import Difficulty, InterviewTopic, QuestionType
@@ -22,7 +22,7 @@ from app.main import app
 from app.models.interview_session import InterviewSession
 from app.redis.client import get_redis_client
 from app.workflows.interview.models import AnswerAnalysis, GeneratedQuestion, NextAction
-from tests.fakes import FailingAsyncRedis, FakeAsyncRedis, FakeLLMProvider
+from tests.fakes import fake_current_user, FailingAsyncRedis, FakeAsyncRedis, FakeLLMProvider
 
 
 @compiles(UUID, "sqlite")
@@ -114,6 +114,7 @@ def app_overrides(db_engine, fake_redis: FakeAsyncRedis, fake_llm: FakeLLMProvid
         return None
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = fake_current_user
     app.dependency_overrides[get_redis_client] = override_get_redis_client
     app.dependency_overrides[get_llm_provider] = override_get_llm_provider
     app.dependency_overrides[get_knowledge_retrieval_service] = override_get_knowledge_retrieval_service

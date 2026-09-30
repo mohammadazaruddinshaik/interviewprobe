@@ -138,7 +138,9 @@ def test_no_new_alembic_migration_was_introduced_for_evaluation():
         "910709f7043a_create_interview_resumes_table.py",
         "a451a0225842_create_interview_sessions_table.py",
         "b3f1a72d9e01_create_interview_plans_table.py",
+        "c7a1e4f29b10_add_users_auth_sessions_and_session_owner.py",
         "d00c8abb5098_create_interview_questions_messages_.py",
+        "d4b8c2e1a7f3_add_dashboard_session_index.py",
     ]
 
 

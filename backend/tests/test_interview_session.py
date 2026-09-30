@@ -12,6 +12,7 @@ def test_interview_session_columns_present():
     columns = {c.name for c in InterviewSession.__table__.columns}
     expected = {
         "id",
+        "user_id",
         "role",
         "difficulty",
         "status",

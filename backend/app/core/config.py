@@ -1,3 +1,6 @@
+from typing import Literal
+
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -99,6 +102,33 @@ class Settings(BaseSettings):
     # ...) — resume upload triggers a structured LLM call too.
     resume_upload_rate_limit: int = 5
     resume_upload_rate_window_seconds: int = 60
+
+    # Google Sign-In + server-side sessions. `google_client_id` is the OAuth
+    # client ID the backend verifies Google ID tokens against (audience);
+    # it is configuration, not a secret. Left unset, POST /api/v1/auth/google
+    # fails clearly with AUTH_NOT_CONFIGURED and the rest of the app runs.
+    google_client_id: str | None = None
+    session_cookie_name: str = "interviewprobe_session"
+    session_lifetime_seconds: int = 14 * 24 * 60 * 60
+    # `None` = secure only when ENVIRONMENT=production. A frontend (Vercel) and
+    # API (Render) on different sites need SESSION_COOKIE_SAMESITE=none, which
+    # browsers only accept together with Secure.
+    session_cookie_secure: bool | None = None
+    session_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
+
+    @property
+    def effective_session_cookie_secure(self) -> bool:
+        if self.session_cookie_secure is not None:
+            return self.session_cookie_secure
+        return self.environment.lower() == "production" or self.session_cookie_samesite == "none"
+
+    @field_validator("cors_allowed_origins")
+    @classmethod
+    def _reject_wildcard_origin(cls, value: list[str]) -> list[str]:
+        # Credentialed CORS must name exact origins; "*" would be unsafe.
+        if any(origin.strip() == "*" for origin in value):
+            raise ValueError("CORS_ALLOWED_ORIGINS must list exact origins; '*' is not allowed with credentials")
+        return value
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

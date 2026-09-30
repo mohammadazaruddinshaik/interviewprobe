@@ -176,7 +176,10 @@ All application routes are mounted under `/api/v1`. This is an overview, not a f
 
 | Endpoint | Purpose | Notes |
 |---|---|---|
-| `POST /api/v1/interviews` | Create a new interview session | role, difficulty, topics, question limit |
+| `POST /api/v1/auth/google` | Exchange a Google ID token for a session cookie | body `{credential}`; returns `{data: {user}}`, sets the HttpOnly session cookie |
+| `GET /api/v1/auth/me` | Current user | `401` without a valid session |
+| `POST /api/v1/auth/logout` | Revoke the session, clear the cookie | `204`, safe when already logged out |
+| `POST /api/v1/interviews` | Create a new interview session | role, difficulty, topics, question limit; requires authentication, owned by the caller |
 | `POST /api/v1/interviews/{id}/start` | Start a `CREATED` session, generate the first question | one real LLM call |
 | `POST /api/v1/interviews/{id}/answers` | Submit an answer, get the next action/question | requires an `Idempotency-Key` header; a repeated request with the same key and the same answer replays the original response rather than re-mutating |
 | `GET /api/v1/interviews/{id}` | Current interview state | topics, current question, progress |
@@ -274,12 +277,15 @@ Azure Speech TTS again
 - Every third-party API credential (LLM, Qdrant, Azure Speech, Deepgram) lives backend-side only; the frontend bundle never contains one. `VITE_*` variables are mode switches or URLs only.
 - Deepgram's browser-facing credential is always a short-lived, single-connection token, never the permanent key — and it's never persisted anywhere (not `localStorage`, not a cookie).
 - `CORS_ALLOWED_ORIGINS` must include the actual deployed frontend origin in production; it defaults to the local Vite dev server only.
-- **This application has no authentication or ownership model.** Any interview `session_id` (a UUID) that reaches someone — via a shared link, browser history, a referrer header, or a log — functions as a bearer credential for that interview's full transcript, evaluation, and result. UUIDv4 makes brute-force guessing impractical, but a leaked link is not.
-- Rate limiting (see above) is the primary defense against unbounded resource/cost abuse of LLM, Azure TTS, and Deepgram usage, given the lack of authentication.
+- **Authentication and ownership (Google Sign-In).** The frontend obtains a Google ID token and posts it to `POST /api/v1/auth/google`. The backend verifies it with Google's official library (signature, issuer, audience = `GOOGLE_CLIENT_ID`, expiry, required claims, verified email), finds/creates the user by Google's stable `sub` (never by email), creates a server-side session and sets an **HttpOnly** cookie (`interviewprobe_session`) holding a random 256-bit token. Only the token's SHA-256 hash is stored (`auth_sessions.token_hash`); the raw token is never stored, logged or returned in JSON. `GET /api/v1/auth/me` returns the current user (401 when unauthenticated); `POST /api/v1/auth/logout` revokes the session and clears the cookie.
+- **Every interview belongs to exactly one user** (`interview_sessions.user_id`, set from the authenticated session — a client-supplied user id is ignored). All `/api/v1/interviews/{id}...` routes are owner-scoped: the repository filters by `session_id AND user_id`, and a route-level guard runs before locks/idempotency/rate limiting, so another user's interview is indistinguishable from a nonexistent one (`404 INTERVIEW_NOT_FOUND`). Unauthenticated calls get `401 UNAUTHENTICATED`.
+- **CSRF / CORS strategy.** Cookie auth is cross-site-attackable, so: (1) credentialed CORS is allowed only for the exact origins in `CORS_ALLOWED_ORIGINS` (a `*` value is rejected at startup); (2) a middleware validates the `Origin` header of every state-changing request (POST/PUT/PATCH/DELETE) against that same list, returning `403 ORIGIN_NOT_ALLOWED` for other origins and for cookie-bearing state-changing requests with no `Origin`; (3) the cookie uses `SameSite`. No separate CSRF token exists — a token that isn't validated would be security theater. For Vercel + Render (different sites) set `SESSION_COOKIE_SAMESITE=none` (which forces `Secure`) and `CORS_ALLOWED_ORIGINS=["https://<frontend origin>"]`.
+- Rate limiting (see above) remains the defense against unbounded LLM, Azure TTS, and Deepgram usage; the voice endpoints are still unauthenticated.
 
 ## Known limitations
 
-- No authentication or per-user ownership model exists anywhere in the app; a session ID is effectively a bearer credential (see [Security notes](#security-notes)).
+- Interview routes now require a Google Sign-In session (see [Security notes](#security-notes)). The legacy `frontend/` does not send credentials or have a sign-in flow, so it can no longer call the interview endpoints; the current product frontend is `client/` (only the auth API plumbing exists there so far — no sign-in UI yet).
+- Interview rows created before authentication existed keep `user_id = NULL`: they are not assigned to any user, are unreachable through the API, and are not deleted. `interview_sessions.user_id` stays nullable until those legacy rows are reviewed (assigned or purged); a follow-up migration can then make it `NOT NULL`.
 - Azure Speech (TTS) is configured and verified working in production. **Deepgram (STT) is not yet configured in production** — `DEEPGRAM_API_KEY` still needs to be set in the Render environment. Until that's done, question playback works in production but live speech input does not; production voice input should not be considered verified until that credential is set and the flow is checked against the real Deepgram service.
 - There is no recruiter/admin dashboard — result data is only accessible via the API/frontend result page for a given session ID.
 - There is no in-browser coding IDE or code-execution environment; answers are free-text (typed or spoken), not executed code.

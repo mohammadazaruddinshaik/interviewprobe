@@ -5,7 +5,8 @@ import hashlib
 import io
 import math
 import time
-from uuid import UUID
+from types import SimpleNamespace
+from uuid import UUID, uuid4
 
 from docx import Document
 from pydantic import BaseModel
@@ -457,3 +458,14 @@ def make_test_docx_bytes(text: str = "Test Resume Content For Extraction") -> by
     buf = io.BytesIO()
     document.save(buf)
     return buf.getvalue()
+
+
+# A fixed identity used by API tests that are not about authentication: they
+# override `get_current_user` with this user so interview routes (which are
+# owner-scoped) work without a real Google login. Authentication and
+# ownership themselves are tested in test_auth_api.py / test_interview_ownership.py.
+TEST_USER_ID = UUID("00000000-0000-4000-8000-00000000a11c")
+
+
+def fake_current_user():
+    return SimpleNamespace(id=TEST_USER_ID, name="Test User", email="test@example.com", avatar_url=None)
