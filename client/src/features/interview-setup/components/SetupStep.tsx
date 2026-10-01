@@ -11,9 +11,9 @@ interface SetupStepProps {
 function SetupStep({ number, title, hint, headingId, children }: SetupStepProps) {
   return (
     <section
-      data-setup="step"
+      data-enter=""
       aria-labelledby={headingId}
-      className="grid gap-3.5 border-t border-ink/[0.08] pt-[22px] first:border-t-0 first:pt-0 xl:grid-cols-[170px_minmax(0,1fr)] xl:gap-5"
+      className="grid gap-4 rounded-2xl border border-ink/12 bg-white/60 p-5 sm:p-6 xl:grid-cols-[170px_minmax(0,1fr)] xl:gap-6"
     >
       <div className="flex items-baseline gap-3.5 xl:block">
         <span className="w-[26px] shrink-0 font-display text-[13px] font-extrabold tracking-[0.04em] text-forest/55 xl:mb-1.5 xl:block xl:w-auto">

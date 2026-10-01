@@ -1,6 +1,7 @@
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
+from app.domain.enums import InterviewStatus
 from app.repositories.dashboard_repository import DashboardRepository
 from app.schemas.dashboard import (
     DashboardActivityDay,
@@ -101,8 +102,10 @@ class DashboardService:
                 else DashboardNextInterview(
                     id=next_session.id,
                     role=next_session.role,
-                    difficulty=next_session.difficulty,
-                    question_limit=next_session.question_limit,
+                    difficulty=None if next_session.status is InterviewStatus.CREATED else next_session.difficulty,
+                    question_limit=(
+                        None if next_session.status is InterviewStatus.CREATED else next_session.question_limit
+                    ),
                     status=next_session.status,
                 )
             ),

@@ -15,7 +15,6 @@ from app.domain.enums import (
     ResumeExtractionStatus,
     Role,
 )
-from app.domain.roles import InvalidRoleTopicError, validate_role_topics
 from app.investigation.investigator import ClaimInvestigator
 from app.investigation.models import ClaimInvestigation, InvestigationEvidence
 from app.models.interview_message import InterviewMessage
@@ -41,6 +40,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_DURATION_MINUTES = 45
+
+# Runtime-safe placeholders for the NOT NULL `difficulty` / `question_limit` columns of a CREATED session
+# (the question limit sits inside the 3-10 range enforced by ck_interview_sessions_question_limit_min). They are
+# not candidate choices and are not reported while CREATED. When a planner is configured, `start_interview` overwrites
+# them with plan.starting_difficulty / plan.max_questions BEFORE the first question or any runtime state reads them;
+# they survive only for planner-less (pre-Phase-3) sessions.
+PLACEHOLDER_DIFFICULTY = Difficulty.MEDIUM
+PLACEHOLDER_QUESTION_LIMIT = 5
 
 # Maps a validated `NextAction.action` to the persisted question's
 # `QuestionType`. "END" is deliberately absent — that action never
@@ -72,13 +79,6 @@ class InvalidQuestionError(InterviewServiceError):
 
 class InterviewExpiredError(InterviewServiceError):
     """Raised when the authoritative interview deadline has passed."""
-
-
-class InvalidRoleTopicSelectionError(InterviewServiceError):
-    """Raised when the requested topics are not valid for the requested
-    role. Wraps `app.domain.roles.InvalidRoleTopicError` so the API layer
-    only ever maps `InterviewServiceError` subclasses, never a domain
-    exception, to an HTTP response."""
 
 
 def get_interview_deadline(
@@ -149,40 +149,24 @@ class InterviewService:
     # Create
     # ------------------------------------------------------------------
 
-    def create_interview(
-        self,
-        role: Role,
-        difficulty: Difficulty,
-        question_limit: int,
-        topics: list[InterviewTopic],
-    ) -> InterviewSession:
-        try:
-            try:
-                validate_role_topics(role, topics)
-            except InvalidRoleTopicError as exc:
-                raise InvalidRoleTopicSelectionError(str(exc)) from exc
+    def create_interview(self, role: Role) -> InterviewSession:
+        """Create a CREATED session for `role`. The candidate picks nothing else: topics are chosen by the
+        planner at start (`interview_topics` stays empty until `_materialize_plan_topics`), and
+        difficulty / question_limit are planner-owned too.
 
+        `difficulty` and `question_limit` are NOT NULL columns, so a CREATED session carries the
+        conservative placeholders `PLACEHOLDER_*` below. They are internal, never reported by the API
+        while CREATED, and are overwritten from the validated InterviewPlan at start."""
+        try:
             session = InterviewSession(
                 role=role,
-                difficulty=difficulty,
+                difficulty=PLACEHOLDER_DIFFICULTY,
                 status=InterviewStatus.CREATED,
-                question_limit=question_limit,
+                question_limit=PLACEHOLDER_QUESTION_LIMIT,
                 current_question_number=0,
                 version=1,
             )
             self.repository.create_session(session)
-
-            topic_entries = [
-                InterviewTopicEntry(
-                    session_id=session.id,
-                    topic=topic,
-                    sequence_number=sequence_number,
-                    status=InterviewTopicStatus.PENDING,
-                )
-                for sequence_number, topic in enumerate(topics, start=1)
-            ]
-            self.repository.create_topics(topic_entries)
-
             self._db.commit()
         except Exception:
             self._db.rollback()
@@ -216,7 +200,7 @@ class InterviewService:
             topics = self.repository.get_topics(session_id)
             if not topics:
                 raise InvalidInterviewStateError(
-                    f"Interview session {session_id} has no selected topics to start."
+                    f"Interview session {session_id} has no planned topics to start."
                 )
             first_topic_entry = topics[0]
 
@@ -410,7 +394,7 @@ class InterviewService:
         (there is no persisted, populated topic column to read from) and
         `questions_answered` is computed by counting CANDIDATE messages,
         rather than inferred from `current_question_number` bookkeeping.
-        `topics` is the session's persisted topic selection, in sequence
+        `topics` is the session's persisted (planner-materialized) topics, in sequence
         order.
 
         `current_unanswered_question` (Task 27) is the question a candidate
@@ -467,14 +451,17 @@ class InterviewService:
 
         existing_plan = self.repository.load_plan(session.id)
         if existing_plan is not None:
-            return
+            if existing_plan.starting_difficulty is not None and existing_plan.max_questions is not None:
+                self._apply_plan_runtime_values(session, existing_plan)
+                return
+            # Legacy plan (pre-B1, no planner decisions). A CREATED session only carries creation-time
+            # placeholders, which are not a prior runtime state, so they must not stand in for planner
+            # decisions. Replace the plan with a freshly generated, validated one. Only flushes; a
+            # planner failure rolls the deletion back with the rest of the start transaction.
+            self.repository.delete_plan(session.id)
 
         resume_profile = self._load_resume_profile(session.id)
-        constraints = InterviewPlanningConstraints(
-            max_duration_minutes=DEFAULT_MAX_DURATION_MINUTES,
-            difficulty=session.difficulty,
-            question_limit=session.question_limit,
-        )
+        constraints = InterviewPlanningConstraints(max_duration_minutes=DEFAULT_MAX_DURATION_MINUTES)
         planning_input = build_planning_input(
             role=session.role,
             constraints=constraints,
@@ -482,7 +469,17 @@ class InterviewService:
         )
         plan = await self.planner.plan(planning_input)
         self.repository.create_plan(session.id, plan)
+        self._apply_plan_runtime_values(session, plan)
         self._materialize_plan_topics(session, plan)
+
+    def _apply_plan_runtime_values(self, session: InterviewSession, plan) -> None:
+        """Copy the planner's validated decisions into the session's runtime columns. The workflow, the
+        decision validator, `submit_answer` and Redis all keep reading the session, never the plan."""
+        self.repository.update_session(
+            session,
+            difficulty=plan.starting_difficulty,
+            question_limit=plan.max_questions,
+        )
 
     def _load_resume_profile(self, session_id: uuid.UUID) -> ResumeProfile | None:
         """Load a successfully extracted resume profile for planning.

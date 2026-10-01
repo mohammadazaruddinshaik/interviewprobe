@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 
 class InterviewTopicEntry(Base):
-    """One selected topic for an interview session (`interview_topics` row).
+    """One planner-selected topic for an interview session (`interview_topics` row).
 
     Named `InterviewTopicEntry` rather than `InterviewTopic` to avoid
     colliding with the `InterviewTopic` domain enum this model references.

@@ -106,7 +106,7 @@ function Footer() {
           </p>
           <a
             data-ft="cta"
-            href="#start-practicing"
+            href="/signin"
             className="group inline-flex h-[60px] w-full items-center justify-center gap-3 rounded-[14px] bg-forest px-9 text-[17px] font-semibold tracking-[-0.005em] text-cream shadow-[inset_0_1px_0_rgb(255_255_255/0.14),0_1px_2px_rgb(20_42_11/0.3),0_12px_24px_-10px_rgb(20_42_11/0.55)] outline-offset-4 transition-[background-color,box-shadow,translate] duration-200 ease-out hover:-translate-y-0.5 hover:bg-forest-light hover:shadow-[inset_0_1px_0_rgb(255_255_255/0.18),0_2px_4px_rgb(20_42_11/0.3),0_18px_28px_-10px_rgb(20_42_11/0.6)] focus-visible:outline-[3px] focus-visible:outline-yellow active:translate-y-0 motion-reduce:transition-none motion-reduce:hover:translate-y-0 sm:w-auto"
           >
             Start Practicing Free

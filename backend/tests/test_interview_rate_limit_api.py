@@ -14,6 +14,7 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from tests.runtime_seed import create_api_interview
 from app.api.deps import get_current_user, get_claim_investigator, get_interview_planner, get_knowledge_retrieval_service, get_llm_provider
 from app.db.base import Base
 from app.db.session import get_db
@@ -35,12 +36,7 @@ def _compile_jsonb_sqlite(element, compiler, **kw):
     return "JSON"
 
 
-VALID_CREATE_PAYLOAD = {
-    "role": "AI_ENGINEER",
-    "difficulty": "MEDIUM",
-    "topics": ["RAG", "AI_AGENTS"],
-    "question_limit": 5,
-}
+VALID_CREATE_PAYLOAD = {"role": "AI_ENGINEER"}
 
 
 def _fake_llm() -> FakeLLMProvider:
@@ -148,9 +144,7 @@ def session_count(session_local) -> int:
 
 
 def create_interview(test_client: TestClient) -> dict:
-    response = test_client.post("/api/v1/interviews", json=VALID_CREATE_PAYLOAD)
-    assert response.status_code == 201
-    return response.json()["data"]
+    return create_api_interview(test_client)
 
 
 # ---------------------------------------------------------------------------

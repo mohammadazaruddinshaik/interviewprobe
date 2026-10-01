@@ -7,6 +7,7 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from tests.runtime_seed import create_runtime_session
 from app.core.config import settings
 from app.db.base import Base
 from app.domain.enums import Difficulty, InterviewStatus, InterviewTopic, QuestionType, Role
@@ -202,7 +203,7 @@ async def test_get_or_rebuild_state_reconstructs_from_postgres_on_miss(
     interview_service: InterviewService,
     fake_redis: FakeAsyncRedis,
 ):
-    session = interview_service.create_interview(
+    session = create_runtime_session(interview_service, 
         role=Role.AI_ENGINEER,
         difficulty=Difficulty.MEDIUM,
         question_limit=3,
@@ -258,7 +259,7 @@ async def test_redis_failure_raises_explicit_error_not_silent(repository: Interv
 async def test_redis_failure_does_not_affect_postgres_interview_state(
     repository: InterviewRepository, interview_service: InterviewService
 ):
-    session = interview_service.create_interview(
+    session = create_runtime_session(interview_service, 
         role=Role.AI_ENGINEER,
         difficulty=Difficulty.MEDIUM,
         question_limit=3,

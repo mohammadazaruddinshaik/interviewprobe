@@ -367,6 +367,73 @@ class TestIntegrity:
 # ===================================================================
 
 
+class TestLegacyPlans:
+    """Plans persisted before `starting_difficulty` / `max_questions` existed must keep loading, untouched."""
+
+    LEGACY = {
+        "role": "AI_ENGINEER",
+        "plan_version": 1,
+        "objectives": ["Assess core AI engineering competency."],
+        "planned_topics": [
+            {
+                "topic": "RAG",
+                "competency_keys": ["retrieval_augmented_generation"],
+                "priority": "HIGH",
+                "rationale": "Key role competency.",
+                "resume_relevance": "NONE",
+                "related_claim_ids": [],
+                "suggested_time_budget_minutes": 10,
+            }
+        ],
+    }
+
+    def test_legacy_plan_without_planner_decisions_loads(
+        self, repository: InterviewRepository, db_session: Session
+    ):
+        session = repository.create_session(_make_interview_session())
+        db_session.add(
+            InterviewPlanRecord(session_id=session.id, plan_version=1, role=Role.AI_ENGINEER, plan=dict(self.LEGACY))
+        )
+        db_session.commit()
+
+        loaded = repository.load_plan(session.id)
+
+        assert loaded is not None
+        assert loaded.starting_difficulty is None
+        assert loaded.max_questions is None
+        assert loaded.planned_topics[0].topic is InterviewTopic.RAG
+
+    def test_loading_a_legacy_plan_does_not_rewrite_the_stored_json(
+        self, repository: InterviewRepository, db_session: Session
+    ):
+        session = repository.create_session(_make_interview_session())
+        db_session.add(
+            InterviewPlanRecord(session_id=session.id, plan_version=1, role=Role.AI_ENGINEER, plan=dict(self.LEGACY))
+        )
+        db_session.commit()
+
+        repository.load_plan(session.id)
+        db_session.expire_all()
+
+        assert repository.get_plan(session.id).plan == self.LEGACY
+
+    def test_new_plan_persists_and_reloads_planner_decisions(
+        self, repository: InterviewRepository, db_session: Session
+    ):
+        session = repository.create_session(_make_interview_session())
+        plan = _plan().model_copy(update={"starting_difficulty": Difficulty.HARD, "max_questions": 7})
+        repository.create_plan(session.id, plan)
+        db_session.commit()
+
+        record = repository.get_plan(session.id)
+        assert record.plan["starting_difficulty"] == "HARD"
+        assert record.plan["max_questions"] == 7
+        loaded = repository.load_plan(session.id)
+        assert loaded.starting_difficulty is Difficulty.HARD
+        assert loaded.max_questions == 7
+        assert record.plan_version == 1  # version / uniqueness semantics unchanged
+
+
 class TestTransactionBehavior:
     def test_repository_does_not_independently_commit(
         self, repository: InterviewRepository, db_session: Session

@@ -29,6 +29,15 @@ from app.resume.models import ResumeCandidateInfo, ResumeClaim, ResumeProfile
 
 PLAN_VERSION = 1
 
+# Backend-defined bounds on planner output. The question bounds mirror the existing runtime contract for
+# `interview_sessions.question_limit` (ck_interview_sessions_question_limit_min, >= 3), since `max_questions` is
+# copied into that column at start. The topic bounds: a plan needs at least two topics (the smallest role —
+# SDE_INTERN — has two required topics) and at most six.
+PLAN_MIN_QUESTIONS = 3
+PLAN_MAX_QUESTIONS = 10
+PLAN_MIN_TOPICS = 2
+PLAN_MAX_TOPICS = 6
+
 
 # ---------------------------------------------------------------------------
 # Resume claim identity
@@ -76,16 +85,20 @@ def identify_resume_claims(claims: list[ResumeClaim]) -> list[PlanningResumeClai
 
 
 class InterviewPlanningConstraints(BaseModel):
+    """The only hard limit on a plan. Difficulty, question count and topics are the planner's decisions, not
+    inputs — `extra="forbid"` so a caller still passing them fails loudly."""
+
+    model_config = ConfigDict(extra="forbid")
+
     max_duration_minutes: int = Field(ge=1)
-    difficulty: Difficulty
-    # Same bounds as `CreateInterviewRequest.question_limit`.
-    question_limit: int = Field(ge=3, le=10)
 
 
 class InterviewPlanningInput(BaseModel):
-    """Everything a planner may use. `resume_profile` holds no claims and
-    no candidate contact details — claims travel separately, identified,
-    in `resume_claims` (see `build_planning_input`)."""
+    """Everything a planner may use. `competencies` is always the role's full competency catalog — the planner
+    chooses the topics. `resume_profile` holds no claims and no candidate contact details — claims travel
+    separately, identified, in `resume_claims` (see `build_planning_input`)."""
+
+    model_config = ConfigDict(extra="forbid")
 
     role: Role
     competencies: list[RoleCompetency] = Field(min_length=1)
@@ -113,7 +126,7 @@ def build_planning_input(
     constraints: InterviewPlanningConstraints,
     resume_profile: ResumeProfile | None = None,
 ) -> InterviewPlanningInput:
-    """Assemble planner input from the role's competency catalog and an
+    """Assemble planner input from the role's full competency catalog and an
     optional (already validated) resume profile. The profile's claims are
     moved into identified `resume_claims`, and candidate contact details
     are dropped — the planner has no use for them."""
@@ -167,6 +180,11 @@ class InterviewPlan(BaseModel):
     plan_version: int = Field(default=PLAN_VERSION, ge=1)
     objectives: list[str] = Field(min_length=1)
     planned_topics: list[PlannedTopic] = Field(min_length=1)
+    # The planner's interview-shaping decisions. Optional ONLY so plans persisted before these fields existed
+    # still load; `validate_interview_plan` rejects a freshly generated plan that omits them. `max_questions` is
+    # a safety ceiling, not a promised length — the adaptive workflow may finish earlier.
+    starting_difficulty: Difficulty | None = None
+    max_questions: int | None = Field(default=None, ge=PLAN_MIN_QUESTIONS, le=PLAN_MAX_QUESTIONS)
 
     @field_validator("objectives")
     @classmethod

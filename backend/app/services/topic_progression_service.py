@@ -23,7 +23,7 @@ class TopicProgressionService:
         return self.repository.session
 
     def initialize_topic_progression(self, session_id: UUID) -> None:
-        """Call once, when an interview starts: the first selected topic
+        """Call once, when an interview starts: the first planned topic
         (lowest sequence_number) becomes IN_PROGRESS; the rest stay
         PENDING (their persisted default — nothing to change there).
 

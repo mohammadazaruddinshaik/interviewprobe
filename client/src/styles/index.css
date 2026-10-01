@@ -57,3 +57,50 @@
     font-family: inherit;
   }
 }
+
+/* Interview room: AI presence motion. Disabled entirely under prefers-reduced-motion (state is also shown as text). */
+@keyframes ip-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.035); }
+}
+@keyframes ip-ring {
+  0% { transform: scale(0.82); opacity: 0.5; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+@keyframes ip-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ip-motion { animation: none !important; }
+}
+@keyframes ip-drift {
+  to { transform: rotate(360deg); }
+}
+@keyframes ip-halo {
+  0%, 100% { opacity: 0.35; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.06); }
+}
+@keyframes ip-dot {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 0.9; }
+}
+
+/* Interview room: question hand-over, slow internal presence motion, ambient backdrop. */
+@keyframes ip-enter {
+  from { opacity: 0; transform: translateY(14px); filter: blur(6px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+@keyframes ip-leave {
+  from { opacity: 1; transform: none; filter: none; }
+  to { opacity: 0; transform: translateY(-10px) scale(0.985); filter: blur(5px); }
+}
+@keyframes ip-wander {
+  0% { transform: translate(-8%, -4%) scale(1); }
+  35% { transform: translate(7%, 3%) scale(1.12); }
+  70% { transform: translate(-3%, 8%) scale(0.96); }
+  100% { transform: translate(-8%, -4%) scale(1); }
+}
+@keyframes ip-float {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(3%, -4%, 0) scale(1.08); }
+}

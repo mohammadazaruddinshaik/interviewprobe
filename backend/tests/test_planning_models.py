@@ -21,7 +21,7 @@ EVAL_CLAIM = ResumeClaim(claim="Reduced hallucinations by 40% with LLM-as-judge 
 
 
 def _constraints(**overrides) -> InterviewPlanningConstraints:
-    values = {"max_duration_minutes": 30, "difficulty": Difficulty.MEDIUM, "question_limit": 5}
+    values = {"max_duration_minutes": 30}
     return InterviewPlanningConstraints(**(values | overrides))
 
 
@@ -267,7 +267,8 @@ def _all_field_names(model: type[BaseModel]) -> set[str]:
 
 def test_plan_contract_has_no_generated_question_field():
     names = _all_field_names(InterviewPlan)
-    assert not any("question" in name for name in names)
+    # `max_questions` is a numeric ceiling chosen by the planner, not a generated question.
+    assert not any("question" in name for name in names - {"max_questions"})
 
 
 def test_plan_contract_has_no_llm_specific_fields():

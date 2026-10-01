@@ -66,7 +66,7 @@ class NextAction(BaseModel):
 
 
 class TopicState(BaseModel):
-    """One selected topic's current progression status, as loaded from
+    """One planned topic's current progression status, as loaded from
     `interview_topics` — the minimum a decision needs to know about a
     topic, not the full persisted row."""
 

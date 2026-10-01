@@ -20,6 +20,7 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from tests.plan_helpers import completed
 from app.db.base import Base
 from app.domain.enums import (
     ClaimInvestigationStatus,
@@ -96,6 +97,7 @@ _CLAIM_RAG_ID = build_claim_id(_CLAIM_RAG)
 _CLAIM_AGENTS_ID = build_claim_id(_CLAIM_AGENTS)
 
 
+@completed
 def _ai_plan_with_claims() -> InterviewPlan:
     return InterviewPlan(
         role=Role.AI_ENGINEER,
@@ -123,6 +125,7 @@ def _ai_plan_with_claims() -> InterviewPlan:
     )
 
 
+@completed
 def _ai_plan_no_claims() -> InterviewPlan:
     return InterviewPlan(
         role=Role.AI_ENGINEER,
@@ -470,7 +473,8 @@ class TestPlanResumeStart:
         assert started.status is InterviewStatus.IN_PROGRESS
         loaded_plan = repository.load_plan(session.id)
         assert loaded_plan is not None
-        assert len(loaded_plan.planned_topics) == 2
+        assert len(loaded_plan.planned_topics) == len(plan.planned_topics)
+        assert loaded_plan.starting_difficulty is not None and loaded_plan.max_questions is not None
 
     @pytest.mark.asyncio
     async def test_plan_materializes_topics(
@@ -486,7 +490,8 @@ class TestPlanResumeStart:
 
         topics = repository.get_topics(session.id)
         topic_enums = [t.topic for t in topics]
-        assert topic_enums == [InterviewTopic.RAG, InterviewTopic.AI_AGENTS]
+        assert topic_enums == [p.topic for p in plan.planned_topics]
+        assert topic_enums[:2] == [InterviewTopic.RAG, InterviewTopic.AI_AGENTS]
 
     @pytest.mark.asyncio
     async def test_existing_plan_is_reused(

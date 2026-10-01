@@ -24,6 +24,7 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from tests.runtime_seed import create_api_interview
 from app.api.deps import get_current_user, get_claim_investigator, get_interview_planner, get_knowledge_retrieval_service, get_llm_provider
 from app.db.base import Base
 from app.db.session import get_db
@@ -127,15 +128,10 @@ def create_interview(
     question_limit: int = 5,
     difficulty: str = "MEDIUM",
 ) -> dict:
-    payload = {
-        "role": role,
-        "difficulty": difficulty,
-        "topics": topics or ["RAG", "AI_AGENTS"],
-        "question_limit": question_limit,
-    }
-    response = client.post("/api/v1/interviews", json=payload)
-    assert response.status_code == 201, response.text
-    return response.json()["data"]
+    # POST takes only a role; the runtime state a planner would write at start is seeded directly.
+    return create_api_interview(
+        client, role=role, difficulty=difficulty, topics=topics, question_limit=question_limit
+    )
 
 
 def start_interview(client: TestClient, session_id: str) -> dict:

@@ -1,26 +1,21 @@
 import { formatScore, scoreLabel } from '../lib/scoreFormat'
-import ScoreBar from './ScoreBar'
 
+/** The score stands alone: no verdict, label or comparison. */
 function OverallScoreCard({ score }: { score: number }) {
   return (
-    <section
-      data-result="overall"
-      aria-label="Overall score"
-      className="rounded-[20px] border border-ink/12 bg-white/60 p-6 shadow-[0_1px_2px_rgb(20_42_11/0.05),0_18px_36px_-24px_rgb(20_42_11/0.3)] sm:p-8"
-    >
-      <p className="text-[11px] font-semibold tracking-[0.18em] text-ink/50">OVERALL SCORE</p>
-      <p className="mt-3 flex items-baseline gap-3 text-deep">
+    <section data-enter="" aria-labelledby="reflection-heading" className="rounded-2xl border border-ink/12 bg-white/60 p-6 sm:p-8">
+      <h2 id="reflection-heading" className="text-[11px] font-semibold tracking-[0.2em] text-ink/55">
+        YOUR INTERVIEW REFLECTION
+      </h2>
+      <p className="mt-5 flex items-baseline gap-3">
         <span className="sr-only">{scoreLabel('Overall score', score)}</span>
-        <span aria-hidden="true" className="font-display text-[64px] font-extrabold leading-none tracking-[-0.04em] sm:text-[80px]">
+        <span aria-hidden="true" className="bg-gradient-to-t from-yellow from-[26%] to-transparent to-[26%] px-1 font-serif text-[88px] font-normal leading-none tracking-[-0.03em] text-ink sm:text-[120px]">
           {formatScore(score)}
         </span>
-        <span aria-hidden="true" className="font-display text-[22px] font-extrabold text-deep/45 sm:text-[28px]">
+        <span aria-hidden="true" className="font-serif text-[26px] text-ink/50 sm:text-[34px]">
           / 10
         </span>
       </p>
-      <div className="mt-6">
-        <ScoreBar score={score} tall />
-      </div>
     </section>
   )
 }

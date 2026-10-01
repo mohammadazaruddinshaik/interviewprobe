@@ -1,34 +1,23 @@
-import { Check } from 'lucide-react'
 import { topicLabel } from '@/features/dashboard/lib/labels'
 import { isCovered } from '../lib/coverage'
 import type { ResultTopic } from '../types/result'
 
+/** Only topics the conversation actually reached. Pending topics are never listed: that would expose the hidden plan. */
 function TopicCoverage({ topics }: { topics: ResultTopic[] }) {
-  if (topics.length === 0) return null
-  const ordered = [...topics].sort((a, b) => a.sequence_number - b.sequence_number)
+  const reached = topics.filter(isCovered).sort((a, b) => a.sequence_number - b.sequence_number)
+  if (reached.length === 0) return null
   return (
-    <section data-result="topics" aria-labelledby="coverage-heading">
-      <h2 id="coverage-heading" className="font-display text-[22px] font-extrabold tracking-[-0.02em] text-deep">
-        Topic coverage
+    <section data-enter="" aria-labelledby="topics-heading" className="rounded-2xl border border-ink/12 bg-white/60 p-6 sm:p-8">
+      <h2 id="topics-heading" className="text-[11px] font-semibold tracking-[0.2em] text-ink/55">
+        TOPICS DISCUSSED
       </h2>
-      <ul className="mt-4 grid gap-2 sm:grid-cols-2">
-        {ordered.map((t) => {
-          const covered = isCovered(t)
-          return (
-            <li key={t.topic} className="flex items-center justify-between gap-3 rounded-xl border border-ink/12 bg-white/60 px-4 py-3">
-              <span className="flex items-center gap-3 text-[14.5px] font-medium text-deep">
-                <span
-                  aria-hidden="true"
-                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-[1.5px] ${covered ? 'border-forest bg-forest text-cream' : 'border-ink/25'}`}
-                >
-                  {covered && <Check size={12} strokeWidth={3} />}
-                </span>
-                {topicLabel(t.topic)}
-              </span>
-              <span className={`text-[12.5px] font-medium ${covered ? 'text-forest' : 'text-ink/50'}`}>{covered ? 'Covered' : 'Not reached'}</span>
-            </li>
-          )
-        })}
+      <ul className="mt-4 flex flex-wrap gap-x-3 gap-y-2 text-[15.5px] text-ink/80">
+        {reached.map((t, i) => (
+          <li key={t.topic} className="flex items-center gap-3">
+            {topicLabel(t.topic)}
+            {i < reached.length - 1 && <span aria-hidden="true" className="text-ink/30">·</span>}
+          </li>
+        ))}
       </ul>
     </section>
   )

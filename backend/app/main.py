@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 from sqlalchemy.orm import Session
 
+from app.planning.validator import InvalidInterviewPlanError
 from app.api.routes.auth import router as auth_router
 from app.auth.exceptions import AuthNotConfiguredError, AuthenticationRequiredError, InvalidGoogleCredentialError
 from app.api.routes.dashboard import router as dashboard_router
@@ -43,7 +44,6 @@ from app.services.interview_service import (
     InterviewNotFoundError,
     InvalidInterviewStateError,
     InvalidQuestionError,
-    InvalidRoleTopicSelectionError,
 )
 from app.voice.exceptions import (
     VoiceConfigurationError,
@@ -70,13 +70,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
-# Task 25A: the frontend (Vite dev server) and this API run on different
-# origins/ports, so the browser requires CORS to allow the request at all.
-# No cookies/session credentials are used by this flow, so
-# `allow_credentials` stays at its default (False) — only the specific
-# local dev origins, methods, and headers actually needed are allowed.
-# `Idempotency-Key` (Task 26) is required on answer submissions.
-# Authentication uses an HttpOnly session cookie, so credentialed CORS is
+# The frontend and this API run on different origins, so the browser requires
+# CORS to allow the request at all. Only the configured origins, methods, and
+# headers actually needed are allowed. `Idempotency-Key` is required on answer
+# submissions. Authentication uses an HttpOnly session cookie, so credentialed CORS is
 # enabled — which is only safe with EXACT origins (never "*"; enforced by a
 # validator on `cors_allowed_origins`).
 app.add_middleware(
@@ -148,7 +145,6 @@ _SERVICE_ERROR_STATUS_CODES: dict[type[Exception], tuple[int, str]] = {
     InterviewNotFoundError: (404, "INTERVIEW_NOT_FOUND"),
     InvalidInterviewStateError: (409, "INVALID_INTERVIEW_STATE"),
     InvalidQuestionError: (409, "INVALID_QUESTION"),
-    InvalidRoleTopicSelectionError: (422, "INVALID_ROLE_TOPIC"),
     InterviewExpiredError: (409, "INTERVIEW_EXPIRED"),
     InterviewLockBusyError: (409, "INTERVIEW_BUSY"),
     EvaluationLockBusyError: (409, "EVALUATION_BUSY"),
@@ -272,6 +268,17 @@ def _handle_llm_error(request: Request, exc: LLMError) -> JSONResponse:
 
 for _exc_type in _LLM_ERROR_RESPONSES:
     app.add_exception_handler(_exc_type, _handle_llm_error)
+
+
+# A planner output that fails cross-object validation (e.g. an invalid topic, or a missing starting_difficulty / max_questions)
+# is an unusable model response, not a server bug: same stable error as any other invalid AI response.
+# Nothing is persisted when it happens, so /start can simply be retried.
+def _handle_invalid_plan(request: Request, exc: InvalidInterviewPlanError) -> JSONResponse:
+    _status, code, message = _LLM_ERROR_RESPONSES[LLMInvalidResponseError]
+    return JSONResponse(status_code=502, content={"error": {"code": code, "message": message}})
+
+
+app.add_exception_handler(InvalidInterviewPlanError, _handle_invalid_plan)
 
 
 # Task 40: TTS failures, translated into the same `{"error": {"code",

@@ -5,7 +5,7 @@ Everything in this module is pure and deterministic — no LLM calls, no
 Redis, no PostgreSQL. It is the single place that enforces:
 
 * the question limit always wins, regardless of what the LLM proposed
-* only the session's selected topics may be chosen for NEW_TOPIC
+* only the session's planned topics may be chosen for NEW_TOPIC
 * a COMPLETED (or the current) topic may not be re-selected
 * FOLLOW_UP/CLARIFY/DEEP_DIVE/CHALLENGE always stay on the current topic
 
@@ -82,7 +82,7 @@ def validate_decision(proposed: NextAction, context: DecisionContext) -> Validat
         return ValidatedDecision(action=normalized)
 
     if proposed.action == "NEW_TOPIC":
-        # A valid NEW_TOPIC target must be one of the session's selected
+        # A valid NEW_TOPIC target must be one of the session's planned
         # topics, currently PENDING (not COMPLETED, and not the topic
         # already IN_PROGRESS — under this lifecycle only one topic is
         # ever IN_PROGRESS at a time, so "PENDING" and "not the current

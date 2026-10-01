@@ -13,6 +13,7 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from tests.runtime_seed import create_runtime_session
 from app.db.base import Base
 from app.domain.enums import Difficulty, InterviewTopic, ResumeExtractionStatus, Role
 from app.models.interview_resume import InterviewResume
@@ -72,7 +73,7 @@ def service(repository: InterviewRepository) -> InterviewService:
 
 
 def create_session(service: InterviewService) -> InterviewSession:
-    return service.create_interview(
+    return create_runtime_session(service, 
         role=Role.AI_ENGINEER,
         difficulty=Difficulty.MEDIUM,
         question_limit=5,

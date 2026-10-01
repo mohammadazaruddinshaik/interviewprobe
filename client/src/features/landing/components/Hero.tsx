@@ -1,4 +1,4 @@
-import { ArrowRight, Play, Sparkles } from 'lucide-react'
+import { ArrowRight, Sparkles } from 'lucide-react'
 import PaintHighlight from './PaintHighlight'
 
 const PAPERS = [
@@ -58,7 +58,7 @@ function Hero() {
           className="mt-5 flex w-full flex-col items-center justify-center gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:gap-[23px] lg:translate-x-[10px]"
         >
           <a
-            href="#start-practicing"
+            href="/signin"
             className="group inline-flex h-[51px] w-full max-w-[320px] items-center justify-center gap-[15px] rounded-[10px] bg-forest text-[15px] font-semibold tracking-[-0.005em] text-cream shadow-[inset_0_1px_0_rgb(255_255_255/0.12),0_1px_2px_rgb(20_42_11/0.3),0_8px_16px_-8px_rgb(20_42_11/0.5)] outline-offset-2 transition-[background-color,box-shadow,translate] duration-200 ease-out hover:-translate-y-0.5 hover:bg-forest-light hover:shadow-[inset_0_1px_0_rgb(255_255_255/0.18),0_2px_4px_rgb(20_42_11/0.3),0_14px_22px_-8px_rgb(20_42_11/0.6)] focus-visible:outline-[3px] focus-visible:outline-yellow active:translate-y-0 motion-reduce:transition-none motion-reduce:hover:translate-y-0 sm:w-auto sm:pl-[25px] sm:pr-[22px]"
           >
             Start Practicing Free
@@ -67,21 +67,6 @@ function Hero() {
               aria-hidden="true"
               className="transition-transform duration-200 ease-out group-hover:translate-x-[4px] motion-reduce:transition-none motion-reduce:group-hover:translate-x-0"
             />
-          </a>
-
-          <a
-            href="#demo"
-            className="group inline-flex h-[51px] w-full max-w-[320px] items-center justify-center gap-[14px] rounded-[10px] border-[1.5px] border-forest/75 bg-cream pl-[2px] pr-[22px] text-[15px] font-semibold tracking-[-0.005em] text-forest shadow-[0_1px_2px_rgb(20_42_11/0.06)] outline-offset-2 transition-[background-color,border-color] duration-200 ease-out hover:border-forest hover:bg-forest/[0.05] focus-visible:outline-2 focus-visible:outline-forest motion-reduce:transition-none sm:w-auto"
-          >
-            <span className="inline-flex h-[44px] w-[44px] items-center justify-center rounded-full border-[1.5px] border-forest/75 transition-colors duration-200 ease-out group-hover:border-forest group-hover:bg-forest group-hover:text-cream motion-reduce:transition-none">
-              <Play
-                size={17}
-                fill="currentColor"
-                aria-hidden="true"
-                className="ml-0.5 transition-transform duration-200 ease-out group-hover:translate-x-[1px] motion-reduce:transition-none motion-reduce:group-hover:translate-x-0"
-              />
-            </span>
-            Watch Demo
           </a>
         </div>
 

@@ -20,6 +20,7 @@ from app.planning.models import (
     build_planning_input,
     identify_resume_claims,
 )
+from tests.plan_helpers import complete_plan
 from app.planning.validator import InvalidInterviewPlanError, validate_interview_plan
 from app.resume.models import ResumeClaim, ResumeProfile, ResumeProjectEntry
 
@@ -29,7 +30,7 @@ SPRING_CLAIM = ResumeClaim(claim="Migrated monolith to Spring Boot microservices
 
 
 def _constraints(**overrides) -> InterviewPlanningConstraints:
-    defaults = {"max_duration_minutes": 45, "difficulty": Difficulty.MEDIUM, "question_limit": 5}
+    defaults = {"max_duration_minutes": 45}
     return InterviewPlanningConstraints(**(defaults | overrides))
 
 
@@ -51,10 +52,31 @@ def _topic(**overrides) -> PlannedTopic:
     return PlannedTopic(**(defaults | overrides))
 
 
-def _plan(role: Role = Role.AI_ENGINEER, topics: list[PlannedTopic] | None = None) -> InterviewPlan:
+def _plan(role: Role = Role.AI_ENGINEER, topics: list[PlannedTopic] | None = None, **fields) -> InterviewPlan:
+    """A plan carrying `topics` plus whatever the planner contract needs to be valid (difficulty, max_questions,
+    required-competency coverage). Extra `fields` override plan fields; use `_raw_plan` for an incomplete plan."""
     if topics is None:
         topics = [_topic()]
-    return InterviewPlan(role=role, objectives=["Assess candidate competency."], planned_topics=topics)
+    plan = complete_plan(InterviewPlan(role=role, objectives=["Assess candidate competency."], planned_topics=topics))
+    return plan.model_copy(update=fields)
+
+
+def _raw_plan(role: Role = Role.AI_ENGINEER, topics: list[PlannedTopic] | None = None, **fields) -> InterviewPlan:
+    """A structurally valid plan with NO completion applied, for testing the validator's own rejections."""
+    return InterviewPlan(
+        role=role,
+        objectives=["Assess candidate competency."],
+        planned_topics=topics if topics is not None else [_topic()],
+        **fields,
+    )
+
+
+def _timed_plan(total_minutes: int) -> InterviewPlan:
+    """A valid AI_ENGINEER plan whose topic budgets sum to exactly `total_minutes`."""
+    plan = _plan()
+    others = sum(t.suggested_time_budget_minutes for t in plan.planned_topics[1:])
+    plan.planned_topics[0].suggested_time_budget_minutes = total_minutes - others
+    return plan
 
 
 # ===================================================================
@@ -293,33 +315,18 @@ class TestResumeRelevance:
 
 class TestTimeBudget:
     def test_total_exactly_equals_max_duration_passes(self):
-        pi = _input(Role.AI_ENGINEER, max_duration_minutes=10)
-
-        plan = _plan(Role.AI_ENGINEER, [
-            _topic(suggested_time_budget_minutes=5),
-            _topic(topic=InterviewTopic.RAG,
-                   competency_keys=["retrieval_augmented_generation"],
-                   suggested_time_budget_minutes=5),
-        ])
-        validate_interview_plan(pi, plan)
+        pi = _input(Role.AI_ENGINEER, max_duration_minutes=45)
+        validate_interview_plan(pi, _timed_plan(45))
 
     def test_total_below_max_duration_passes(self):
         pi = _input(Role.AI_ENGINEER, max_duration_minutes=45)
-        plan = _plan(Role.AI_ENGINEER, [_topic(suggested_time_budget_minutes=10)])
-        validate_interview_plan(pi, plan)
+        validate_interview_plan(pi, _timed_plan(30))
 
     def test_total_exceeds_max_duration_fails(self):
-        pi = _input(Role.AI_ENGINEER, max_duration_minutes=15)
+        pi = _input(Role.AI_ENGINEER, max_duration_minutes=45)
 
-        plan = _plan(Role.AI_ENGINEER, [
-            _topic(suggested_time_budget_minutes=10),
-            _topic(topic=InterviewTopic.RAG,
-                   competency_keys=["retrieval_augmented_generation"],
-                   suggested_time_budget_minutes=8),
-        ])
-
-        with pytest.raises(InvalidInterviewPlanError, match="18 minutes.*15 minutes"):
-            validate_interview_plan(pi, plan)
+        with pytest.raises(InvalidInterviewPlanError, match="46 minutes.*45 minutes"):
+            validate_interview_plan(pi, _timed_plan(46))
 
     def test_zero_time_budget_rejected_at_model_level(self):
         with pytest.raises(ValidationError):
@@ -330,21 +337,14 @@ class TestTimeBudget:
             _topic(suggested_time_budget_minutes=-1)
 
     def test_time_error_states_both_totals(self):
-        pi = _input(Role.AI_ENGINEER, max_duration_minutes=20)
-
-        plan = _plan(Role.AI_ENGINEER, [
-            _topic(suggested_time_budget_minutes=15),
-            _topic(topic=InterviewTopic.RAG,
-                   competency_keys=["retrieval_augmented_generation"],
-                   suggested_time_budget_minutes=10),
-        ])
+        pi = _input(Role.AI_ENGINEER, max_duration_minutes=45)
 
         with pytest.raises(InvalidInterviewPlanError) as exc_info:
-            validate_interview_plan(pi, plan)
+            validate_interview_plan(pi, _timed_plan(60))
 
         msg = str(exc_info.value)
-        assert "25" in msg
-        assert "20" in msg
+        assert "60" in msg
+        assert "45" in msg
 
 
 # ===================================================================
@@ -356,7 +356,7 @@ class TestPlanIntegrity:
     def test_valid_complete_plan_no_resume(self):
         pi = _input(Role.BACKEND_DEVELOPER, max_duration_minutes=45)
 
-        plan = InterviewPlan(
+        plan = complete_plan(InterviewPlan(
             role=Role.BACKEND_DEVELOPER,
             objectives=["Assess backend engineering depth."],
             planned_topics=[
@@ -382,7 +382,7 @@ class TestPlanIntegrity:
                     suggested_time_budget_minutes=10,
                 ),
             ],
-        )
+        ))
 
         validate_interview_plan(pi, plan)  # no exception
 
@@ -391,7 +391,7 @@ class TestPlanIntegrity:
         rag_id = [c.claim_id for c in pi.resume_claims if "RAG" in c.claim.claim][0]
         eval_id = [c.claim_id for c in pi.resume_claims if "hallucinations" in c.claim.claim][0]
 
-        plan = InterviewPlan(
+        plan = complete_plan(InterviewPlan(
             role=Role.AI_ENGINEER,
             objectives=["Probe reported RAG work.", "Assess evaluation methodology."],
             planned_topics=[
@@ -421,7 +421,7 @@ class TestPlanIntegrity:
                     suggested_time_budget_minutes=7,
                 ),
             ],
-        )
+        ))
 
         validate_interview_plan(pi, plan)  # no exception
 
@@ -429,7 +429,7 @@ class TestPlanIntegrity:
         pi = _input(Role.AI_ENGINEER, claims=[RAG_CLAIM], max_duration_minutes=30)
         claim_id = pi.resume_claims[0].claim_id
 
-        plan = InterviewPlan(
+        plan = complete_plan(InterviewPlan(
             role=Role.AI_ENGINEER,
             objectives=["Investigate RAG claim from multiple angles."],
             planned_topics=[
@@ -452,7 +452,7 @@ class TestPlanIntegrity:
                     suggested_time_budget_minutes=8,
                 ),
             ],
-        )
+        ))
 
         validate_interview_plan(pi, plan)  # no exception
 

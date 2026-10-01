@@ -230,6 +230,17 @@ def test_next_interview_uses_latest_created_when_nothing_in_progress(world):
 
     assert next_interview["id"] == expected
     assert set(next_interview) == {"id", "role", "difficulty", "question_limit", "status"}
+    # Planner-owned: a CREATED interview's internal placeholders are never reported.
+    assert next_interview["difficulty"] is None and next_interview["question_limit"] is None
+
+
+def test_next_interview_reports_runtime_values_once_in_progress(world):
+    with world["sf"]() as db:
+        seed(db, world["ua"], status=InterviewStatus.IN_PROGRESS, created_at=NOW)
+
+    next_interview = dashboard(world["a"])["next_interview"]
+
+    assert next_interview["difficulty"] == "MEDIUM" and next_interview["question_limit"] == 5
 
 
 # ---- topics practiced ------------------------------------------------------------------------------

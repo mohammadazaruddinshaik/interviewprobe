@@ -1,69 +1,59 @@
-// Display-ready shapes consumed by the presentational dashboard components.
-// They are produced by lib/dashboardMapper.ts (from the API) — components never
-// see raw API values or do conversions themselves.
+import type { AuthUser } from '@/lib/auth'
 
-export interface NextInterviewView {
-  label: string
-  /** Null when there is no real next interview (empty state). */
-  role: string
-  subtitle: string
-  chips: string[]
+// Display-ready shapes consumed by the presentational dashboard components. They are produced by
+// lib/dashboardMapper.ts from the real API response; nothing here is static content.
+
+/** The one thing the dashboard asks the candidate to do next. */
+export interface PrimaryView {
+  kind: 'continue' | 'start-created' | 'new'
+  heading: string
+  /** The role of the existing interview; null when there is none. */
+  role: string | null
+  /** Plain factual status ("In progress", "Not started") or an invitation line when there is no interview. */
+  note: string
   cta: string
   ctaHref: string
 }
 
-export interface StatView {
-  value: string
+export interface SummaryItem {
   label: string
-  /** Null when the backend has nothing truthful to say (no fabricated deltas). */
+  value: string
+  /** Secondary line, only when the backend has something real to say. */
   context: string | null
 }
 
 export interface RecentInterviewView {
   id: string
   role: string
-  focus: string
-  difficulty: string
-  /** Where the row leads: the completed interview's result page. */
-  href: string
-  /** Display score ("82%") or null when the interview has no evaluation. */
+  /** "Completed 12 minutes ago" / "Completed Sep 28, 2026". */
+  completed: string
+  /** "2.5 / 10", or null when the interview has no evaluation. */
   score: string | null
-  date: string
+  href: string
 }
 
-export type DayState = 'done' | 'today' | 'missed' | 'upcoming'
+export interface StreakDayView {
+  /** "Mon". */
+  label: string
+  /** Full text for assistive technology, e.g. "Monday: interview completed". */
+  title: string
+  active: boolean
+  today: boolean
+}
 
 export interface StreakView {
   days: number
+  /** "3 days" or "No active streak". */
   title: string
-  message: string
-  week: { label: string; state: DayState }[]
-}
-
-export interface PracticedTopicsView {
-  count: number
-  summary: string
-  /** Topics seen in the recent interviews shown above — no per-topic progress is claimed. */
-  recentTopics: string[]
-}
-
-export interface LearningItem {
-  title: string
-  detail: string
-}
-
-export interface GreetingView {
-  greeting: string
-  prompt: string
-  intro: string
+  week: StreakDayView[]
 }
 
 export interface DashboardView {
-  greeting: GreetingView
-  userName: string
-  nextInterview: NextInterviewView
-  stats: StatView[]
-  recentInterviews: RecentInterviewView[]
+  greeting: string
+  user: AuthUser | null
+  primary: PrimaryView
+  /** Empty when nothing has been completed yet: no zeros are shown as if they were results. */
+  summary: SummaryItem[]
   streak: StreakView
-  practicedTopics: PracticedTopicsView
+  recentInterviews: RecentInterviewView[]
 }

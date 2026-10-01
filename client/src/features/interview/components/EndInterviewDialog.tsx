@@ -60,7 +60,7 @@ function EndInterviewDialog({ flow, onCancel, onConfirm }: EndInterviewDialogPro
             aria-busy={ending}
             className="h-11 rounded-xl bg-forest px-5 text-[14px] font-semibold text-cream outline-offset-2 transition-colors hover:enabled:bg-forest-light focus-visible:outline-[3px] focus-visible:outline-yellow disabled:opacity-70 motion-reduce:transition-none"
           >
-            {ending ? 'Ending…' : flow.status === 'error' ? 'Try again' : 'End interview'}
+            {ending ? 'Ending…' : flow.status === 'error' ? 'Try again' : 'End and see results'}
           </button>
         </div>
       </div>

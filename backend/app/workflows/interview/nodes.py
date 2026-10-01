@@ -193,7 +193,7 @@ def _resolve_retrieval_topic(state: InterviewAgentState) -> InterviewTopic | Non
     `current_topic` anyway (see decision_validator.py), so this resolves
     to the same value either way. The initial-question graph never
     populates `next_action` at all, so it falls straight through to
-    `current_topic` (the first selected topic, per `load_interview_context`).
+    `current_topic` (the first planned topic, per `load_interview_context`).
     """
     next_action = state.get("next_action")
     if next_action is not None and next_action.topic is not None:

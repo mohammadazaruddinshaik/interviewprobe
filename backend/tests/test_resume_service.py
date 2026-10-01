@@ -13,6 +13,7 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from tests.runtime_seed import create_runtime_session
 from app.db.base import Base
 from app.domain.enums import Difficulty, InterviewStatus, InterviewTopic, ResumeExtractionStatus, Role
 from app.llm.exceptions import LLMInvalidResponseError, LLMTimeoutError
@@ -77,7 +78,7 @@ def fake_llm_with_profile(profile: ResumeProfile | None = None) -> FakeLLMProvid
 def create_session(repository: InterviewRepository, status: InterviewStatus = InterviewStatus.CREATED):
     workflow = InterviewWorkflow(repository=repository, llm_provider=FakeLLMProvider())
     service = InterviewService(repository, workflow)
-    session = service.create_interview(
+    session = create_runtime_session(service, 
         role=Role.AI_ENGINEER, difficulty=Difficulty.MEDIUM, question_limit=5, topics=[InterviewTopic.RAG]
     )
     if status != InterviewStatus.CREATED:

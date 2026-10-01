@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { ApiError } from '@/lib/api'
-import { signInWithGoogle } from '@/lib/auth'
+import { usePageEntrance } from '@/features/app/hooks/usePageEntrance'
+import { getCurrentUser, signInWithGoogle } from '@/lib/auth'
+import { safeNext } from '@/lib/authRedirect'
 
 // Google Identity Services (ID-token flow): the button returns a signed ID token ("credential") to the
 // callback below; the backend verifies it and sets the HttpOnly session cookie. No redirects, no client secret.
@@ -37,12 +39,29 @@ function describeFailure(error: unknown): string {
   return 'Something went wrong while signing you in. Please try again.'
 }
 
+/** Where to go once signed in: the page the visitor was trying to reach, otherwise the dashboard. */
+const destination = () => safeNext(new URLSearchParams(window.location.search).get('next')) ?? '/app'
+
 function SignInPage() {
+  const scope = usePageEntrance()
   const buttonRef = useRef<HTMLDivElement>(null)
   const [error, setError] = useState<string | null>(
     CLIENT_ID ? null : 'Google Sign-In isn’t configured. Set VITE_GOOGLE_CLIENT_ID and restart the dev server.',
   )
   const [busy, setBusy] = useState(false)
+
+  // Already signed in: the sign-in page has nothing to offer, so continue straight to the destination.
+  useEffect(() => {
+    let cancelled = false
+    getCurrentUser()
+      .then((user) => {
+        if (user && !cancelled) window.location.replace(destination())
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     if (!CLIENT_ID) return
@@ -59,7 +78,7 @@ function SignInPage() {
             setBusy(true)
             try {
               await signInWithGoogle(credential) // reuses the existing auth client (POST /auth/google, cookie set by the server)
-              window.location.assign('/app')
+              window.location.assign(destination())
             } catch (failure) {
               setError(describeFailure(failure))
               setBusy(false)
@@ -76,30 +95,67 @@ function SignInPage() {
   }, [])
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-cream px-4 py-10 text-ink">
-      <section className="w-full max-w-[420px] rounded-[20px] border border-ink/12 bg-white/60 p-7 text-center shadow-[0_1px_2px_rgb(20_42_11/0.05),0_18px_36px_-24px_rgb(20_42_11/0.3)] sm:p-9">
-        <a href="/" aria-label="InterviewProbe home" className="relative mx-auto block h-[38px] w-[196px] overflow-hidden">
+    <main ref={scope} className="relative min-h-screen overflow-hidden bg-cream text-ink lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+      <section className="relative flex flex-col justify-center gap-10 px-6 pb-10 pt-8 sm:px-12 lg:gap-9 lg:px-16 lg:py-10">
+        <a data-enter="" href="/" aria-label="InterviewProbe home" className="relative block h-[38px] w-[196px] overflow-hidden rounded-sm outline-offset-4 focus-visible:outline-[3px] focus-visible:outline-yellow">
           <img src="/assets/landing/logo.png" alt="InterviewProbe" className="absolute -left-[32px] -top-[27px] h-[95px] w-[255px] max-w-none" />
         </a>
-        <h1 className="mt-7 font-display text-[28px] font-extrabold leading-[1.1] tracking-[-0.025em] text-deep">Sign in to continue</h1>
-        <p className="mt-3 font-serif text-[16px] leading-[1.5] text-ink/70">Use your Google account to practice and review your interviews.</p>
-
-        <div className="mt-7 flex min-h-[44px] justify-center" aria-busy={busy}>
-          {busy ? (
-            <p role="status" className="text-[14px] font-medium text-ink/70">
-              Signing you in…
-            </p>
-          ) : (
-            <div ref={buttonRef} />
-          )}
+        <div data-enter="" className="max-w-[560px]">
+          <span aria-hidden="true" className="mb-6 block h-[2px] w-10 bg-orange" />
+          <h1 className="font-serif text-[44px] leading-[1.04] tracking-[-0.025em] text-ink sm:text-[60px]">
+            Practice the interview.
+            <span className="mt-1 block">
+              <span className="bg-gradient-to-t from-yellow from-[30%] to-transparent to-[30%] px-1 -mx-1">Not the script.</span>
+            </span>
+          </h1>
+          <p className="mt-6 max-w-[460px] font-serif text-[18px] leading-[1.5] text-ink/70">
+            An adaptive technical interview with a voice-led AI interviewer that follows your answers, then a result grounded in what you actually said.
+          </p>
         </div>
+        <ol data-enter="" aria-label="How it works" className="mt-0 hidden max-w-[460px] gap-0 border-t border-ink/12 lg:grid">
+          {[
+            ['01', 'Choose a role', 'Add a resume if you like.'],
+            ['02', 'Answer by voice', 'The interviewer follows what you say.'],
+            ['03', 'Review the evidence', 'A result grounded in your answers.'],
+          ].map(([n, title, text]) => (
+            <li key={n} className="grid grid-cols-[40px_minmax(0,1fr)] items-baseline gap-3 border-b border-ink/12 py-3">
+              <span className="font-serif text-[15px] text-orange">{n}</span>
+              <span>
+                <span className="block text-[15px] font-semibold text-ink">{title}</span>
+                <span className="block text-[13.5px] text-ink/60">{text}</span>
+              </span>
+            </li>
+          ))}
+        </ol>
+      </section>
 
-        <div aria-live="polite" className="mt-4 min-h-[22px]">
-          {error && (
-            <p role="alert" className="rounded-xl border border-orange/30 bg-orange/[0.06] px-3.5 py-2.5 text-[13.5px] text-deep">
-              {error}
-            </p>
-          )}
+      <section className="relative flex items-center justify-center px-5 pb-14 sm:px-8 lg:py-12">
+        <div data-enter="" className="w-full max-w-[420px] rounded-[24px] border border-ink/12 bg-white/70 p-8 text-center shadow-[0_1px_2px_rgb(6_11_7/0.04),0_30px_60px_-36px_rgb(6_11_7/0.4)] sm:p-10">
+          <h2 className="font-serif text-[32px] leading-[1.1] tracking-[-0.015em] text-ink">Sign in</h2>
+          <p className="mt-3 text-[15px] leading-[1.5] text-ink/65">Continue with Google to start an interview or review your results.</p>
+
+          <div className="mt-8 flex min-h-[44px] justify-center" aria-busy={busy}>
+            {busy ? (
+              <p role="status" className="inline-flex items-center gap-2.5 text-[14px] font-medium text-ink/70">
+                <span aria-hidden="true" className="size-4 animate-spin rounded-full border-2 border-ink/20 border-t-ink motion-reduce:animate-none" />
+                Signing you in…
+              </p>
+            ) : (
+              <div ref={buttonRef} />
+            )}
+          </div>
+
+          <div aria-live="polite" className="mt-4 min-h-[22px]">
+            {error && (
+              <p role="alert" className="rounded-xl border border-orange/30 bg-orange/[0.06] px-3.5 py-2.5 text-[13.5px] text-ink">
+                {error}
+              </p>
+            )}
+          </div>
+
+          <p className="mt-6 border-t border-ink/10 pt-5 text-[12.5px] leading-[1.5] text-ink/50">
+            Google only verifies who you are. InterviewProbe never sees your Google password.
+          </p>
         </div>
       </section>
     </main>

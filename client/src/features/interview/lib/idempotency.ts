@@ -7,7 +7,7 @@ export type AnswerValidation = { ok: true; answer: string } | { ok: false; messa
 /** Local validation mirroring the backend (trimmed, non-empty, <= 10,000 characters). */
 export function validateAnswer(draft: string): AnswerValidation {
   const answer = draft.trim()
-  if (!answer) return { ok: false, message: 'Write an answer before sending.' }
+  if (!answer) return { ok: false, message: 'We didn’t catch an answer. Please speak, then finish your answer.' }
   if (answer.length > MAX_ANSWER_LENGTH) {
     return { ok: false, message: `Answers can be up to ${MAX_ANSWER_LENGTH.toLocaleString()} characters.` }
   }

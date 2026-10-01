@@ -94,10 +94,10 @@ function Navigation() {
           </ul>
 
           <div className="flex items-center justify-end gap-[13px]">
-            <a href="#login" className={`${loginClass} hidden md:inline-flex`}>
+            <a href="/signin" className={`${loginClass} hidden md:inline-flex`}>
               Log In
             </a>
-            <a href="#start-practicing" className={`${ctaClass} hidden md:inline-flex`}>
+            <a href="/signin" className={`${ctaClass} hidden md:inline-flex`}>
               Start Practicing Free
             </a>
 
@@ -147,10 +147,10 @@ function Navigation() {
                   isMenuOpen ? 'translate-y-0 opacity-100' : '-translate-y-1 opacity-0'
                 }`}
               >
-                <a href="#login" className={`${loginClass} inline-flex flex-1`} onClick={() => setIsMenuOpen(false)}>
+                <a href="/signin" className={`${loginClass} inline-flex flex-1`} onClick={() => setIsMenuOpen(false)}>
                   Log In
                 </a>
-                <a href="#start-practicing" className={`${ctaClass} inline-flex flex-[2]`} onClick={() => setIsMenuOpen(false)}>
+                <a href="/signin" className={`${ctaClass} inline-flex flex-[2]`} onClick={() => setIsMenuOpen(false)}>
                   Start Practicing Free
                 </a>
               </li>

@@ -21,6 +21,7 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from tests.plan_helpers import completed
 from app.db.base import Base
 from app.domain.enums import (
     Difficulty,
@@ -108,6 +109,7 @@ def repository(db_session: Session) -> InterviewRepository:
 # Plan / LLM helpers
 # ---------------------------------------------------------------------------
 
+@completed
 def _ai_plan() -> InterviewPlan:
     """A valid plan for AI_ENGINEER with two topics."""
     return InterviewPlan(
@@ -132,6 +134,7 @@ def _ai_plan() -> InterviewPlan:
     )
 
 
+@completed
 def _ai_plan_with_claims() -> InterviewPlan:
     """A plan that references resume claims."""
     claim = ResumeClaim(claim="Built RAG with Qdrant", category="project", source="Projects")
@@ -160,6 +163,7 @@ def _ai_plan_with_claims() -> InterviewPlan:
     )
 
 
+@completed
 def _backend_plan() -> InterviewPlan:
     """A valid plan for BACKEND_DEVELOPER."""
     return InterviewPlan(
@@ -285,6 +289,45 @@ def _build_service(
 # ===================================================================
 
 
+class TestAutonomousCreationLifecycle:
+    """CREATE (role only, no topics) -> START (planner selects topics) -> interview_topics populated."""
+
+    @pytest.mark.asyncio
+    async def test_created_with_only_a_role_then_started_by_the_planner(
+        self, repository: InterviewRepository, db_session: Session
+    ):
+        plan = _ai_plan()
+        llm = _fake_llm(plan)
+        service = _build_service(repository, llm, planner=LLMInterviewPlanner(llm))
+
+        session = service.create_interview(role=Role.AI_ENGINEER)
+        assert session.status is InterviewStatus.CREATED
+        assert repository.get_topics(session.id) == []
+
+        started, question, _ = await service.start_interview(session.id)
+
+        assert started.status is InterviewStatus.IN_PROGRESS
+        assert [t.topic for t in repository.get_topics(session.id)] == [p.topic for p in plan.planned_topics]
+        assert question.topic is plan.planned_topics[0].topic
+
+    @pytest.mark.asyncio
+    async def test_planner_receives_only_role_catalog_resume_and_duration(
+        self, repository: InterviewRepository, db_session: Session
+    ):
+        llm = _fake_llm(_ai_plan())
+        service = _build_service(repository, llm, planner=LLMInterviewPlanner(llm))
+        session = service.create_interview(role=Role.AI_ENGINEER)
+
+        await service.start_interview(session.id)
+
+        (planning_messages,) = [messages for name, messages in llm.calls if name == "InterviewPlan"]
+        prompt = "\n".join(m.content for m in planning_messages)
+        assert "max_duration_minutes: 45" in prompt
+        assert "key: llm_fundamentals" in prompt  # the full role competency catalog
+        for stale in ("question_limit", "CANDIDATE-SELECTED", "difficulty:"):
+            assert stale not in prompt
+
+
 class TestPlanGeneration:
     @pytest.mark.asyncio
     async def test_start_generates_plan_when_planner_configured(
@@ -356,7 +399,9 @@ class TestTopicMaterialization:
 
         topics = repository.get_topics(session.id)
         topic_enums = [t.topic for t in topics]
-        assert topic_enums == [InterviewTopic.LLM_FUNDAMENTALS, InterviewTopic.RAG]
+        # The plan's topics (in plan order) replace the original row; the plan also covers required competencies.
+        assert topic_enums == [p.topic for p in plan.planned_topics]
+        assert topic_enums[:2] == [InterviewTopic.LLM_FUNDAMENTALS, InterviewTopic.RAG]
 
     @pytest.mark.asyncio
     async def test_materialized_topics_preserve_plan_order(
@@ -425,9 +470,8 @@ class TestTopicMaterialization:
 
         topics = repository.get_topics(session.id)
         topic_enums = [t.topic for t in topics]
-        # Plan only has LLM_FUNDAMENTALS and RAG — AI_AGENTS and EMBEDDINGS gone
-        assert InterviewTopic.AI_AGENTS not in topic_enums
-        assert InterviewTopic.EMBEDDINGS_VECTOR_DB not in topic_enums
+        # The original selection is replaced wholesale by the plan's topics.
+        assert topic_enums == [p.topic for p in plan.planned_topics]
 
 
 # ===================================================================
@@ -770,7 +814,8 @@ class TestMultipleRoles:
 
         assert session_out.status is InterviewStatus.IN_PROGRESS
         topics = repository.get_topics(session.id)
-        assert [t.topic for t in topics] == [InterviewTopic.REST_APIS, InterviewTopic.DATABASES]
+        assert [t.topic for t in topics] == [p.topic for p in plan.planned_topics]
+        assert [t.topic for t in topics][:2] == [InterviewTopic.REST_APIS, InterviewTopic.DATABASES]
 
 
 # ===================================================================

@@ -95,13 +95,12 @@ export function useInterviewRoom(interviewId: string) {
   )
 
   // --- answering ----------------------------------------------------------------------------------------------
-  const setDraft = useCallback((text: string) => dispatch({ type: 'DRAFT', text }), [])
-
-  const submit = useCallback(async () => {
+  // The answer is the candidate's finished (spoken) transcript; the room never offers a text box.
+  const submit = useCallback(async (spoken: string) => {
     const s = stateRef.current
     if (s.phase !== 'ready' || submitGuard.current || s.turn.status === 'submitting') return
     if (s.turn.status === 'rateLimited' && s.turn.until > Date.now()) return
-    const valid = validateAnswer(s.draft)
+    const valid = validateAnswer(spoken)
     if (!valid.ok) return dispatch({ type: 'NOTICE', message: valid.message })
 
     // Same question + same trimmed answer => same attempt (same key); edited text => new logical answer.
@@ -154,10 +153,10 @@ export function useInterviewRoom(interviewId: string) {
         case 'stale':
         case 'keyReused': {
           // Definitive rejection: re-sync from the server FIRST, then discard the attempt.
-          const ok = await resync('The interview moved on, so we refreshed your question.')
+          const ok = await resync('We refreshed your question.')
           clearAttempt(interviewId)
           if (ok) dispatch({ type: 'DROP_ATTEMPT' })
-          else dispatch({ type: 'TURN', turn: { status: 'retryable', message: 'We couldn’t refresh the interview. Please try again.' } })
+          else dispatch({ type: 'TURN', turn: { status: 'retryable', message: 'We couldn’t refresh just now. Try again.' } })
           break
         }
       }
@@ -165,6 +164,14 @@ export function useInterviewRoom(interviewId: string) {
       submitGuard.current = false
     }
   }, [applyServerState, interviewId, resync])
+
+  const notify = useCallback((message: string) => dispatch({ type: 'NOTICE', message }), [])
+
+  /** Drops a stored, unsent attempt so the candidate can answer the same question again. */
+  const discardAttempt = useCallback(() => {
+    clearAttempt(interviewId)
+    dispatch({ type: 'DROP_ATTEMPT' })
+  }, [interviewId])
 
   // --- explicit early exit --------------------------------------------------------------------------------------
   const openEnd = useCallback(() => dispatch({ type: 'END_FLOW', flow: { status: 'confirming' } }), [])
@@ -215,5 +222,5 @@ export function useInterviewRoom(interviewId: string) {
     }
   }, [resync])
 
-  return { state, userName, setDraft, submit, openEnd, closeEnd, confirmEnd, reload: () => window.location.reload() }
+  return { state, userName, submit, notify, discardAttempt, openEnd, closeEnd, confirmEnd, reload: () => window.location.reload() }
 }

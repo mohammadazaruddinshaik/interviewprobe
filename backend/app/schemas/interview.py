@@ -15,17 +15,13 @@ from app.domain.enums import (
 
 
 class CreateInterviewRequest(BaseModel):
-    role: Role
-    difficulty: Difficulty
-    topics: list[InterviewTopic] = Field(min_length=1, max_length=6)
-    question_limit: int = Field(ge=3, le=10)
+    """The candidate chooses only a role (the resume is uploaded separately). Difficulty, topics and the
+    question ceiling are decided by the interview planner at start, so sending them is rejected (422)
+    rather than silently ignored."""
 
-    @field_validator("topics")
-    @classmethod
-    def topics_must_be_unique(cls, value: list[InterviewTopic]) -> list[InterviewTopic]:
-        if len(set(value)) != len(value):
-            raise ValueError("topics must not contain duplicates")
-        return value
+    model_config = ConfigDict(extra="forbid")
+
+    role: Role
 
 
 class CreateInterviewResponse(BaseModel):
@@ -33,9 +29,11 @@ class CreateInterviewResponse(BaseModel):
 
     id: UUID
     role: Role
-    difficulty: Difficulty
+    # Planner-owned, so null/empty until the interview is started: `difficulty` and `question_limit` are
+    # null and `topics` is [] while CREATED (the session's internal placeholder values are never reported).
+    difficulty: Difficulty | None
     topics: list[InterviewTopic]
-    question_limit: int
+    question_limit: int | None
     status: InterviewStatus
 
 
@@ -101,9 +99,10 @@ class InterviewResponse(BaseModel):
 
     session_id: UUID
     role: Role
-    difficulty: Difficulty
+    # Planner-owned: null while the interview is CREATED (see CreateInterviewResponse), real values after start.
+    difficulty: Difficulty | None
     status: InterviewStatus
-    question_limit: int
+    question_limit: int | None
     current_topic: InterviewTopic | None
     current_question_number: int
     questions_answered: int
@@ -202,39 +201,17 @@ class ResumeResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Catalog — GET /interviews/catalog. A read-only projection of the existing
-# role catalog (app/domain/roles.py), the Difficulty enum and the
-# CreateInterviewRequest bounds; nothing here is stored or duplicated.
+# Catalog — GET /interviews/catalog. A read-only projection of the role catalog
+# (app/domain/roles.py): the roles a candidate can pick. Nothing else is
+# candidate configuration; the planner decides topics, difficulty and length.
 # ---------------------------------------------------------------------------
-
-
-class CatalogTopicResponse(BaseModel):
-    value: InterviewTopic
-    label: str
-    description: str
 
 
 class CatalogRoleResponse(BaseModel):
     value: Role
     label: str
     description: str
-    # Only the topics valid for THIS role, in catalog order.
-    topics: list[CatalogTopicResponse]
-
-
-class CatalogDifficultyResponse(BaseModel):
-    # The enum has no labels or descriptions, so none are exposed.
-    value: Difficulty
-
-
-class CatalogRangeResponse(BaseModel):
-    min: int
-    max: int
 
 
 class InterviewCatalogResponse(BaseModel):
     roles: list[CatalogRoleResponse]
-    difficulties: list[CatalogDifficultyResponse]
-    # Both ranges are read from CreateInterviewRequest's own validation rules.
-    question_limit: CatalogRangeResponse
-    topic_limit: CatalogRangeResponse

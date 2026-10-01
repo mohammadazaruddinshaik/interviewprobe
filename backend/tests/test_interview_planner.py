@@ -29,6 +29,7 @@ from app.planning.models import (
 )
 from app.planning.planner import InterviewPlanner, LLMInterviewPlanner
 from app.planning.prompts import build_planning_messages
+from tests.plan_helpers import complete_plan, completed
 from app.planning.validator import InvalidInterviewPlanError
 from app.resume.models import (
     ResumeCandidateInfo,
@@ -49,8 +50,6 @@ EVAL_CLAIM = ResumeClaim(
 def _constraints(**overrides) -> InterviewPlanningConstraints:
     defaults = {
         "max_duration_minutes": 30,
-        "difficulty": Difficulty.MEDIUM,
-        "question_limit": 5,
     }
     return InterviewPlanningConstraints(**(defaults | overrides))
 
@@ -85,6 +84,7 @@ def _input_with_full_profile(
     return build_planning_input(role, _constraints(), profile)
 
 
+@completed
 def _valid_plan(
     role: Role = Role.AI_ENGINEER,
     topics: list[PlannedTopic] | None = None,
@@ -113,6 +113,7 @@ def _valid_plan(
     )
 
 
+@completed
 def _valid_plan_with_claims(
     planning_input: InterviewPlanningInput,
 ) -> InterviewPlan:
@@ -284,7 +285,7 @@ class TestOutput:
 
         assert isinstance(result, InterviewPlan)
         assert result.role is Role.AI_ENGINEER
-        assert len(result.planned_topics) == 2
+        assert len(result.planned_topics) == len(plan.planned_topics)
 
     @pytest.mark.asyncio
     async def test_result_passes_cross_object_validation(self):
@@ -301,7 +302,7 @@ class TestOutput:
     @pytest.mark.asyncio
     async def test_role_mismatch_is_rejected(self):
         pi = _input(Role.AI_ENGINEER)
-        bad_plan = InterviewPlan(
+        bad_plan = complete_plan(InterviewPlan(
             role=Role.BACKEND_DEVELOPER,
             objectives=["x"],
             planned_topics=[
@@ -313,7 +314,7 @@ class TestOutput:
                     suggested_time_budget_minutes=10,
                 ),
             ],
-        )
+        ))
         planner = _make_planner(bad_plan)
 
         with pytest.raises(InvalidInterviewPlanError, match="role"):
@@ -322,7 +323,7 @@ class TestOutput:
     @pytest.mark.asyncio
     async def test_unknown_claim_id_is_rejected(self):
         pi = _input(Role.AI_ENGINEER, claims=[RAG_CLAIM])
-        bad_plan = InterviewPlan(
+        bad_plan = complete_plan(InterviewPlan(
             role=Role.AI_ENGINEER,
             objectives=["Investigate claims."],
             planned_topics=[
@@ -336,7 +337,7 @@ class TestOutput:
                     suggested_time_budget_minutes=10,
                 ),
             ],
-        )
+        ))
         planner = _make_planner(bad_plan)
 
         with pytest.raises(InvalidInterviewPlanError, match="claim_fake999"):
@@ -345,7 +346,7 @@ class TestOutput:
     @pytest.mark.asyncio
     async def test_time_budget_exceeded_is_rejected(self):
         pi = _input(Role.AI_ENGINEER, max_duration_minutes=15)
-        over_budget_plan = InterviewPlan(
+        over_budget_plan = complete_plan(InterviewPlan(
             role=Role.AI_ENGINEER,
             objectives=["x"],
             planned_topics=[
@@ -364,10 +365,10 @@ class TestOutput:
                     suggested_time_budget_minutes=10,
                 ),
             ],
-        )
+        ))
         planner = _make_planner(over_budget_plan)
 
-        with pytest.raises(InvalidInterviewPlanError, match="20 minutes.*15 minutes"):
+        with pytest.raises(InvalidInterviewPlanError, match="minutes exceeds maximum duration 15 minutes"):
             await planner.plan(pi)
 
     @pytest.mark.asyncio
@@ -421,7 +422,7 @@ class TestResumeBehavior:
     @pytest.mark.asyncio
     async def test_resume_free_plan_works(self):
         pi = _input(Role.BACKEND_DEVELOPER)
-        plan = InterviewPlan(
+        plan = complete_plan(InterviewPlan(
             role=Role.BACKEND_DEVELOPER,
             objectives=["Assess backend fundamentals."],
             planned_topics=[
@@ -440,7 +441,7 @@ class TestResumeBehavior:
                     suggested_time_budget_minutes=10,
                 ),
             ],
-        )
+        ))
         planner = _make_planner(plan)
 
         result = await planner.plan(pi)

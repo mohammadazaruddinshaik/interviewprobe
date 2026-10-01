@@ -4,7 +4,6 @@ from app.services.interview_service import (
     InterviewServiceError,
     InvalidInterviewStateError,
     InvalidQuestionError,
-    InvalidRoleTopicSelectionError,
 )
 
 __all__ = [
@@ -13,5 +12,4 @@ __all__ = [
     "InterviewServiceError",
     "InvalidInterviewStateError",
     "InvalidQuestionError",
-    "InvalidRoleTopicSelectionError",
 ]

@@ -209,6 +209,13 @@ class InterviewRepository:
         self.session.flush()
         return record
 
+    def delete_plan(self, session_id: uuid.UUID) -> None:
+        """Delete every persisted plan version for a session. Only flushes."""
+        stmt = select(InterviewPlanRecord).where(InterviewPlanRecord.session_id == session_id)
+        for record in self.session.scalars(stmt).all():
+            self.session.delete(record)
+        self.session.flush()
+
     def get_plan(self, session_id: uuid.UUID) -> InterviewPlanRecord | None:
         """The most recent plan for a session (highest plan_version)."""
         stmt = (

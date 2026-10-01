@@ -1,41 +1,23 @@
-import AppShell from '@/features/app/components/AppShell'
 import DashboardNotice from '@/features/dashboard/components/DashboardNotice'
-import DashboardSidebar from '@/features/dashboard/components/DashboardSidebar'
-import DashboardTopBar from '@/features/dashboard/components/DashboardTopBar'
-import { difficultyLabel, roleLabel } from '@/features/dashboard/lib/labels'
 import { useInterviewRoom } from '../hooks/useInterviewRoom'
-import { useRetryCountdown } from '../hooks/useRetryCountdown'
 import { useRoomEntrance } from '../hooks/useRoomEntrance'
-import { questionProgress } from '../lib/progress'
-import { sendButtonState } from '../lib/sendState'
-import AnswerComposer from './AnswerComposer'
-import EndInterviewDialog from './EndInterviewDialog'
-import MobileSendBar from './MobileSendBar'
-import QuestionPanel from './QuestionPanel'
-import RoomHeader from './RoomHeader'
 import RoomSkeleton from './RoomSkeleton'
-import TopicRoadmap from './TopicRoadmap'
+import StartPrompt from './StartPrompt'
+import VoiceRoom from './VoiceRoom'
 
-const LAYOUT = 'mx-auto max-w-[1180px] px-4 pb-[132px] pt-5 sm:px-6 sm:pt-7 lg:px-8 lg:pb-16 lg:pt-8 xl:px-10'
-const GRID = 'mt-7 grid gap-8 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-start xl:grid-cols-[minmax(0,1fr)_320px] xl:gap-10'
+const NOTICE_LAYOUT = 'mx-auto max-w-[760px] px-4 py-10 sm:px-6'
 
+/** The voice-first interview room. Server state is authoritative; this page only chooses what to show. */
 function InterviewRoomPage({ interviewId }: { interviewId: string }) {
   const room = useInterviewRoom(interviewId)
   const { state } = room
-  const questionId = state.phase === 'ready' ? state.question.id : null
-  const scope = useRoomEntrance(state.phase, questionId)
-  const until = state.phase === 'ready' && state.turn.status === 'rateLimited' ? state.turn.until : null
-  const secondsLeft = useRetryCountdown(until)
+  const scope = useRoomEntrance(state.phase, state.phase === 'ready' ? state.question.id : null)
 
   return (
-    <AppShell
-      rootRef={scope}
-      sidebar={(mode, close) => <DashboardSidebar mode={mode} close={close} />}
-      topBar={(controls) => <DashboardTopBar userName={room.userName ?? 'Account'} context="Interview" {...controls} />}
-    >
-      <div className={LAYOUT}>
-        {state.phase === 'loading' && <RoomSkeleton />}
+    <div ref={scope} className={`min-h-screen ${state.phase === 'ready' || state.phase === 'loading' || state.phase === 'notStarted' ? 'bg-[#06110a] text-cream' : 'bg-cream text-ink'}`}>
+      {state.phase === 'loading' && <RoomSkeleton />}
 
+      <div className={state.phase === 'ready' || state.phase === 'loading' ? undefined : NOTICE_LAYOUT}>
         {state.phase === 'notFound' && (
           <DashboardNotice title="Interview not found" message="We couldn’t find that interview. It may not exist, or it may belong to a different account." action={{ label: 'Back to dashboard', href: '/app' }} />
         )}
@@ -45,53 +27,20 @@ function InterviewRoomPage({ interviewId }: { interviewId: string }) {
         {state.phase === 'loadError' && (
           <DashboardNotice title="Couldn’t load your interview" message="Please check your connection and try again." action={{ label: 'Try again', onClick: room.reload }} />
         )}
-        {state.phase === 'notStarted' && (
-          <DashboardNotice title="This interview hasn’t started" message="Set up a new interview to begin." action={{ label: 'Set up an interview', href: '/app/interviews/new' }} />
-        )}
+        {state.phase === 'notStarted' && <StartPrompt interviewId={interviewId} />}
         {state.phase === 'failed' && (
           <DashboardNotice title="This interview couldn’t continue" message="Something went wrong with this interview. You can start a new one." action={{ label: 'Set up an interview', href: '/app/interviews/new' }} />
         )}
-
         {state.phase === 'completed' && (
-          <p role="status" className="font-serif text-[17px] text-ink/70">
-            Interview complete. Opening your results…
-          </p>
+          <div data-room="completed" role="status" className="flex min-h-[50vh] flex-col items-center justify-center text-center">
+            <h1 className="font-display text-[28px] font-extrabold leading-[1.1] tracking-[-0.025em] text-deep sm:text-[34px]">Interview complete.</h1>
+            <p className="mt-3 font-serif text-[17px] text-ink/60">Opening your results…</p>
+          </div>
         )}
-
-        {state.phase === 'ready' && (() => {
-          const progress = questionProgress(state.question, state.interview.question_limit)
-          const button = sendButtonState(state.draft, state.attempt, state.turn, secondsLeft)
-          return (
-            <>
-              <RoomHeader
-                roleLabel={roleLabel(state.interview.role)}
-                difficultyLabel={difficultyLabel(state.interview.difficulty)}
-                current={progress.current}
-                total={progress.total}
-                onEnd={room.openEnd}
-                endDisabled={state.turn.status === 'submitting'}
-              />
-              <div className={GRID}>
-                <div className="flex min-w-0 flex-col gap-6">
-                  <QuestionPanel question={state.question} />
-                  <AnswerComposer
-                    draft={state.draft}
-                    attempt={state.attempt}
-                    turn={state.turn}
-                    secondsLeft={secondsLeft}
-                    onChange={room.setDraft}
-                    onSubmit={room.submit}
-                  />
-                </div>
-                <TopicRoadmap topics={state.interview.topics} transcript={state.transcript} />
-              </div>
-              <MobileSendBar label={button.label} busy={button.busy} disabled={button.disabled} characters={state.draft.length} onSend={room.submit} />
-              <EndInterviewDialog flow={state.endFlow} onCancel={room.closeEnd} onConfirm={room.confirmEnd} />
-            </>
-          )
-        })()}
       </div>
-    </AppShell>
+
+      {state.phase === 'ready' && <VoiceRoom state={state} room={room} />}
+    </div>
   )
 }
 

@@ -14,8 +14,9 @@ export interface DashboardStats {
 export interface DashboardNextInterview {
   id: string
   role: string
-  difficulty: string
-  question_limit: number
+  /** Planner-owned: null while the interview is CREATED. */
+  difficulty: string | null
+  question_limit: number | null
   status: string
 }
 

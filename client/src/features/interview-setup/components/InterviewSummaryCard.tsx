@@ -4,7 +4,6 @@ import StartButton from './StartButton'
 interface InterviewSummaryCardProps {
   roleLabel: string
   meta: string
-  topicLabels: string[]
   canSubmit: boolean
   busy: boolean
   busyLabel: string
@@ -13,9 +12,9 @@ interface InterviewSummaryCardProps {
   onStart: () => void
 }
 
-function InterviewSummaryCard({ roleLabel, meta, topicLabels, canSubmit, busy, busyLabel, error, loading, onStart }: InterviewSummaryCardProps) {
+function InterviewSummaryCard({ roleLabel, meta, canSubmit, busy, busyLabel, error, loading, onStart }: InterviewSummaryCardProps) {
   return (
-    <aside data-setup="summary" aria-label="Interview summary" className="lg:sticky lg:top-[84px]">
+    <aside data-enter="" aria-label="Interview summary" className="lg:sticky lg:top-[84px]">
       <div aria-busy={loading} className="rounded-[20px] border border-ink/12 bg-white/60 p-2 shadow-[0_1px_2px_rgb(20_42_11/0.05),0_18px_36px_-24px_rgb(20_42_11/0.3)]">
         <div className="px-5 pb-4 pt-5">
           <p className="flex items-center gap-2.5 text-[11px] font-semibold tracking-[0.18em] text-ink/45">
@@ -27,19 +26,9 @@ function InterviewSummaryCard({ roleLabel, meta, topicLabels, canSubmit, busy, b
               {roleLabel}
             </h2>
             <p className={`mt-1.5 font-serif text-[17px] text-ink/70 ${loading ? 'animate-pulse rounded-md bg-ink/[0.08] text-transparent motion-reduce:animate-none' : ''}`}>{meta}</p>
-            <ul className="mt-4 flex min-h-[30px] flex-wrap gap-1.5">
-              {loading ? (
-                <li className="h-[26px] w-28 animate-pulse rounded-full bg-ink/[0.08] motion-reduce:animate-none" />
-              ) : topicLabels.length === 0 ? (
-                <li className="rounded-full border border-dashed border-ink/12 px-2.5 py-1 text-[12px] text-ink/45">No focus areas selected</li>
-              ) : (
-                topicLabels.map((label) => (
-                  <li key={label} className="rounded-full border border-ink/12 bg-cream px-2.5 py-1 text-[12px] font-medium text-ink/70">
-                    {label}
-                  </li>
-                ))
-              )}
-            </ul>
+            <p className="mt-4 text-[13px] leading-[1.45] text-ink/60">
+              Topics, difficulty and length are planned for you when you start.
+            </p>
           </div>
         </div>
 
@@ -48,7 +37,7 @@ function InterviewSummaryCard({ roleLabel, meta, topicLabels, canSubmit, busy, b
         <div className="px-3 pb-3.5 pt-4 max-lg:hidden">
           <StartButton disabled={!canSubmit} busy={busy} busyLabel={busyLabel} onClick={onStart} className="h-[54px] w-full text-[16px] font-semibold" />
           <p role={error ? 'alert' : undefined} className={`mt-2.5 min-h-[18px] text-center text-[12.5px] ${error ? 'text-orange' : 'text-ink/60'}`}>
-            {error ?? (!canSubmit && !busy && !loading ? 'Select at least one focus area to start.' : '')}
+            {error ?? ''}
           </p>
         </div>
       </div>

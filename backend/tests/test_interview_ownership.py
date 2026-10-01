@@ -10,6 +10,7 @@ from sqlalchemy import select
 from app.models.interview_session import InterviewSession
 from app.models.user import User
 from tests.auth_helpers import auth_app, sign_in
+from tests.runtime_seed import create_api_interview
 from tests.test_interview_api import VALID_CREATE_PAYLOAD
 
 NOT_FOUND = "INTERVIEW_NOT_FOUND"
@@ -25,9 +26,8 @@ def world():
 
 
 def _create(client) -> str:
-    response = client.post("/api/v1/interviews", json=VALID_CREATE_PAYLOAD)
-    assert response.status_code == 201, response.text
-    return response.json()["data"]["id"]
+    """A CREATED interview owned by `client`'s user, with the runtime state a planner would provide seeded."""
+    return create_api_interview(client)["id"]
 
 
 def _assert_not_found(response):
@@ -69,10 +69,10 @@ def test_request_cannot_override_ownership(world):
 
     response = world["a"].post("/api/v1/interviews", json=payload)
 
-    assert response.status_code == 201
+    # Unknown fields are rejected outright (the create request forbids extras), so nothing is created at all.
+    assert response.status_code == 422
     with world["sf"]() as db:
-        row = db.get(InterviewSession, uuid.UUID(response.json()["data"]["id"]))
-        assert str(row.user_id) == world["user_a"]["id"]
+        assert db.execute(select(InterviewSession)).scalars().all() == []
 
 
 def test_creating_an_interview_requires_authentication(world):

@@ -23,9 +23,10 @@ export interface TopicEntry {
 export interface InterviewState {
   session_id: string
   role: string
-  difficulty: string
+  /** Planner-owned: null while CREATED, the real value once started. */
+  difficulty: string | null
   status: InterviewStatus
-  question_limit: number
+  question_limit: number | null
   current_topic: string | null
   current_question_number: number
   questions_answered: number

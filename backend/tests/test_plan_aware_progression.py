@@ -20,6 +20,7 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from tests.plan_helpers import complete_plan, completed
 from app.db.base import Base
 from app.domain.enums import (
     Difficulty,
@@ -104,6 +105,7 @@ def repository(db_session: Session) -> InterviewRepository:
 # Helpers
 # ---------------------------------------------------------------------------
 
+@completed
 def _ai_plan(*topic_tuples) -> InterviewPlan:
     """Build an AI_ENGINEER plan from (topic, competency_key) tuples."""
     planned = []
@@ -461,17 +463,21 @@ class TestQuestionLimitScenarioG:
             ("FOLLOW_UP", InterviewTopic.LLM_FUNDAMENTALS, Difficulty.MEDIUM),
             ("FOLLOW_UP", InterviewTopic.LLM_FUNDAMENTALS, Difficulty.MEDIUM),
         )
-        # question_limit=3: Q1 (start), Q2 (ans 1), Q3 (ans 2), END (ans 3)
-        service, session = _create_planned_session(
-            repository, db_session, plan, llm, question_limit=3,
-        )
+        # The planner's max_questions is the session's question_limit once started.
+        # 5 is the smallest ceiling that covers this plan's five planned topics:
+        # Q1 (start), Q2..Q5 (ans 1-4), END (ans 5)
+        plan = complete_plan(plan, max_questions=5)
+        llm = _make_llm(plan, *[("FOLLOW_UP", InterviewTopic.LLM_FUNDAMENTALS, Difficulty.MEDIUM)] * 5)
+        service, session = _create_planned_session(repository, db_session, plan, llm)
 
         session, q1_id = await _start_and_get_question(service, session.id)
         session, q2, _ = await _answer(service, session.id, q1_id)
         session, q3, _ = await _answer(service, session.id, q2.id)
         session, q4, _ = await _answer(service, session.id, q3.id)
+        session, q5, _ = await _answer(service, session.id, q4.id)
+        session, q4, _ = await _answer(service, session.id, q5.id)
 
-        # After answering Q3 (the limit), interview completes — even
+        # After answering Q5 (the limit), interview completes — even
         # though RAG and EMBEDDINGS topics were never visited.
         assert session.status is InterviewStatus.COMPLETED
         assert q4 is None
@@ -494,7 +500,7 @@ class TestResumeAwarePlanScenarioH:
     ):
         claim = ResumeClaim(claim="Built RAG with Qdrant", category="project", source="Projects")
         claims = identify_resume_claims([claim])
-        plan = InterviewPlan(
+        plan = complete_plan(InterviewPlan(
             role=Role.AI_ENGINEER,
             objectives=["Probe RAG experience."],
             planned_topics=[
@@ -515,7 +521,7 @@ class TestResumeAwarePlanScenarioH:
                     suggested_time_budget_minutes=10,
                 ),
             ],
-        )
+        ))
         llm = _make_llm(plan,
             ("NEW_TOPIC", InterviewTopic.LLM_FUNDAMENTALS, Difficulty.MEDIUM),
         )
@@ -642,7 +648,7 @@ class TestReloadResumeScenarioJ:
         assert plan_calls_after_answer == plan_calls_after_start
 
         topics = repository.get_topics(session.id)
-        assert len(topics) == 3
+        assert len(topics) == len(plan.planned_topics)
         assert topics[0].topic is InterviewTopic.LLM_FUNDAMENTALS
 
 
@@ -764,7 +770,7 @@ class TestEndBehavior:
 
         topics = repository.get_topics(session.id)
         pending = [t for t in topics if t.status == InterviewTopicStatus.PENDING]
-        assert len(pending) == 2
+        assert len(pending) == len(plan.planned_topics) - 1
 
 
 # ===================================================================

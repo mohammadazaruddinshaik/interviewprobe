@@ -8,6 +8,7 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from tests.runtime_seed import create_runtime_session
 from app.db.base import Base
 from app.domain.enums import (
     Difficulty,
@@ -27,7 +28,8 @@ from app.services.interview_service import (
     InterviewService,
     InvalidInterviewStateError,
     InvalidQuestionError,
-    InvalidRoleTopicSelectionError,
+    PLACEHOLDER_DIFFICULTY,
+    PLACEHOLDER_QUESTION_LIMIT,
 )
 from app.workflows.interview.graph import InterviewWorkflow
 from app.workflows.interview.models import AnswerAnalysis, GeneratedQuestion, NextAction
@@ -126,7 +128,7 @@ def service(repository: InterviewRepository, workflow: InterviewWorkflow) -> Int
 
 
 def create_session(service: InterviewService, question_limit: int = 3) -> InterviewSession:
-    return service.create_interview(
+    return create_runtime_session(service, 
         role=Role.AI_ENGINEER,
         difficulty=Difficulty.MEDIUM,
         question_limit=question_limit,
@@ -139,18 +141,36 @@ def create_session(service: InterviewService, question_limit: int = 3) -> Interv
 # ---------------------------------------------------------------------------
 
 
-def test_create_interview_sets_initial_state(service: InterviewService):
-    session = create_session(service, question_limit=5)
+def test_create_interview_sets_initial_state(service: InterviewService, repository: InterviewRepository):
+    session = service.create_interview(role=Role.AI_ENGINEER)
 
     assert session.id is not None
     assert session.role is Role.AI_ENGINEER
-    assert session.difficulty is Difficulty.MEDIUM
-    assert session.question_limit == 5
     assert session.status is InterviewStatus.CREATED
     assert session.current_question_number == 0
     assert session.version == 1
     assert session.started_at is None
     assert session.completed_at is None
+    # Planner-owned: no topics are created, and the NOT NULL columns hold only the internal placeholders.
+    assert repository.get_topics(session.id) == []
+    assert session.difficulty is PLACEHOLDER_DIFFICULTY
+    assert session.question_limit == PLACEHOLDER_QUESTION_LIMIT
+
+
+@pytest.mark.parametrize("role", list(Role))
+def test_create_interview_accepts_every_role_and_creates_no_topics(
+    service: InterviewService, repository: InterviewRepository, role: Role
+):
+    session = service.create_interview(role=role)
+
+    assert session.role is role
+    assert repository.get_topics(session.id) == []
+
+
+def test_create_interview_no_longer_takes_candidate_configuration(service: InterviewService):
+    for stale in ({"difficulty": Difficulty.HARD}, {"question_limit": 7}, {"topics": [InterviewTopic.RAG]}):
+        with pytest.raises(TypeError):
+            service.create_interview(role=Role.AI_ENGINEER, **stale)
 
 
 # ---------------------------------------------------------------------------
@@ -464,12 +484,7 @@ def test_failed_create_interview_persists_nothing(
 ):
     with patch.object(repository, "create_session", side_effect=RuntimeError("boom")):
         with pytest.raises(RuntimeError):
-            service.create_interview(
-                role=Role.AI_ENGINEER,
-                difficulty=Difficulty.EASY,
-                question_limit=3,
-                topics=[InterviewTopic.RAG],
-            )
+            service.create_interview(role=Role.AI_ENGINEER)
 
     remaining = db_session.execute(select(InterviewSession)).scalars().all()
     assert remaining == []
@@ -502,90 +517,15 @@ async def test_failed_submit_answer_rolls_back_partial_writes(
 
 
 # ---------------------------------------------------------------------------
-# Task 17: role/topic validation at creation
+# Starting from the first persisted (runtime) topic
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "role,topics",
-    [
-        (Role.AI_ENGINEER, [InterviewTopic.RAG, InterviewTopic.AI_AGENTS]),
-        (Role.FRONTEND_DEVELOPER, [InterviewTopic.JAVASCRIPT, InterviewTopic.REACT]),
-        (Role.BACKEND_DEVELOPER, [InterviewTopic.REST_APIS, InterviewTopic.DATABASES]),
-        (Role.JAVA_DEVELOPER, [InterviewTopic.CORE_JAVA, InterviewTopic.COLLECTIONS]),
-    ],
-)
-def test_create_interview_accepts_topics_valid_for_the_role(
-    service: InterviewService, role: Role, topics: list[InterviewTopic]
-):
-    session = service.create_interview(
-        role=role, difficulty=Difficulty.MEDIUM, question_limit=3, topics=topics
-    )
-
-    assert session.role is role
-
-
-@pytest.mark.parametrize(
-    "role,topics",
-    [
-        (Role.BACKEND_DEVELOPER, [InterviewTopic.REACT]),
-        (Role.FRONTEND_DEVELOPER, [InterviewTopic.DATABASES]),
-        (Role.JAVA_DEVELOPER, [InterviewTopic.RAG]),
-    ],
-)
-def test_create_interview_rejects_topics_invalid_for_the_role(
-    service: InterviewService, role: Role, topics: list[InterviewTopic]
-):
-    with pytest.raises(InvalidRoleTopicSelectionError):
-        service.create_interview(
-            role=role, difficulty=Difficulty.MEDIUM, question_limit=3, topics=topics
-        )
-
-
-def test_create_interview_with_invalid_role_topic_persists_no_session(
-    service: InterviewService, db_session: Session
-):
-    with pytest.raises(InvalidRoleTopicSelectionError):
-        service.create_interview(
-            role=Role.BACKEND_DEVELOPER,
-            difficulty=Difficulty.MEDIUM,
-            question_limit=3,
-            topics=[InterviewTopic.REACT],
-        )
-
-    remaining = db_session.execute(select(InterviewSession)).scalars().all()
-    assert remaining == []
-
-
-# ---------------------------------------------------------------------------
-# Task 17: topic order and starting from the first selected topic
-# ---------------------------------------------------------------------------
-
-
-def test_create_interview_persists_topics_in_requested_order_not_alphabetical(
-    service: InterviewService, repository: InterviewRepository
-):
-    session = service.create_interview(
-        role=Role.BACKEND_DEVELOPER,
-        difficulty=Difficulty.MEDIUM,
-        question_limit=3,
-        topics=[InterviewTopic.DATABASES, InterviewTopic.REST_APIS, InterviewTopic.CACHING],
-    )
-
-    persisted = repository.get_topics(session.id)
-    assert [t.topic for t in persisted] == [
-        InterviewTopic.DATABASES,
-        InterviewTopic.REST_APIS,
-        InterviewTopic.CACHING,
-    ]
-    assert [t.sequence_number for t in persisted] == [1, 2, 3]
 
 
 @pytest.mark.asyncio
 async def test_start_interview_uses_first_persisted_topic_not_a_hardcoded_constant(
     service: InterviewService, repository: InterviewRepository
 ):
-    session = service.create_interview(
+    session = create_runtime_session(service, 
         role=Role.FRONTEND_DEVELOPER,
         difficulty=Difficulty.MEDIUM,
         question_limit=3,
@@ -601,7 +541,7 @@ async def test_start_interview_uses_first_persisted_topic_not_a_hardcoded_consta
 async def test_start_interview_marks_only_first_topic_in_progress(
     service: InterviewService, repository: InterviewRepository
 ):
-    session = service.create_interview(
+    session = create_runtime_session(service, 
         role=Role.JAVA_DEVELOPER,
         difficulty=Difficulty.MEDIUM,
         question_limit=3,
@@ -626,7 +566,7 @@ async def test_start_interview_derives_topic_from_persisted_selection_not_role_c
     # AI Engineer's role catalog lists LLM_FUNDAMENTALS first, but this
     # candidate selected AI_AGENTS first — the persisted selection order
     # must win, never the catalog's order.
-    session = service.create_interview(
+    session = create_runtime_session(service, 
         role=Role.AI_ENGINEER,
         difficulty=Difficulty.MEDIUM,
         question_limit=3,
@@ -653,7 +593,7 @@ def test_get_interview_state_returns_unanswered_question_even_if_pointer_is_stal
     pointing at a question that has already been answered, while a later
     question is the genuinely unanswered one — and confirms the correct
     question is still returned."""
-    session = service.create_interview(
+    session = create_runtime_session(service, 
         role=Role.AI_ENGINEER,
         difficulty=Difficulty.MEDIUM,
         question_limit=5,
@@ -701,7 +641,7 @@ def test_get_interview_state_returns_unanswered_question_even_if_pointer_is_stal
 
 
 def test_get_interview_state_current_question_is_none_when_created(service: InterviewService):
-    session = service.create_interview(
+    session = create_runtime_session(service, 
         role=Role.AI_ENGINEER,
         difficulty=Difficulty.MEDIUM,
         question_limit=3,
@@ -717,7 +657,7 @@ def test_get_interview_state_current_question_is_none_when_created(service: Inte
 async def test_get_interview_state_current_question_is_none_once_completed(
     service: InterviewService,
 ):
-    session = service.create_interview(
+    session = create_runtime_session(service, 
         role=Role.AI_ENGINEER,
         difficulty=Difficulty.MEDIUM,
         question_limit=3,

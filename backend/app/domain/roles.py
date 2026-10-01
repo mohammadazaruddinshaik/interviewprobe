@@ -19,11 +19,11 @@ Task 10):
     Lives only in this module — never       even two interviews for the
     written to the database.                same role. Lives in PostgreSQL.
 
-Interview creation is expected to validate a candidate's requested
-topics *against* this catalog (`validate_role_topics`); only the
-selected subset then gets persisted as `interview_topics` rows. The
-catalog answers "is this a legal choice?" — it never represents "what
-this particular candidate chose."
+The candidate supplies only a role. The interview planner picks topics
+from this catalog and validates them against it (`is_topic_valid_for_role`,
+`validate_role_topics`); the plan's topics are persisted as
+`interview_topics` rows. The catalog answers "is this a legal topic for
+the role?" — it never represents what a particular interview covers.
 
 Kept intentionally simple: a handful of typed Pydantic models plus a
 plain `dict` constant. No database, no plugin system, no dynamic

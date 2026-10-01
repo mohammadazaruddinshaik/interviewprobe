@@ -31,110 +31,29 @@ from app.schemas.interview import (
 
 
 def test_create_interview_request_valid():
-    request = CreateInterviewRequest(
-        role=Role.AI_ENGINEER,
-        difficulty=Difficulty.MEDIUM,
-        topics=[InterviewTopic.LLM_FUNDAMENTALS, InterviewTopic.RAG],
-        question_limit=5,
-    )
+    request = CreateInterviewRequest(role=Role.AI_ENGINEER)
 
     assert request.role is Role.AI_ENGINEER
-    assert request.topics == [InterviewTopic.LLM_FUNDAMENTALS, InterviewTopic.RAG]
-    assert request.question_limit == 5
+    assert set(CreateInterviewRequest.model_fields) == {"role"}
 
 
 def test_create_interview_request_invalid_role_rejected():
     with pytest.raises(ValidationError):
-        CreateInterviewRequest(
-            role="NOT_A_ROLE",
-            difficulty=Difficulty.MEDIUM,
-            topics=[InterviewTopic.RAG],
-            question_limit=5,
-        )
+        CreateInterviewRequest(role="NOT_A_ROLE")
 
 
-def test_create_interview_request_invalid_difficulty_rejected():
+def test_create_interview_request_requires_a_role():
     with pytest.raises(ValidationError):
-        CreateInterviewRequest(
-            role=Role.AI_ENGINEER,
-            difficulty="NOT_A_DIFFICULTY",
-            topics=[InterviewTopic.RAG],
-            question_limit=5,
-        )
+        CreateInterviewRequest()
 
 
-def test_create_interview_request_invalid_topic_rejected():
-    with pytest.raises(ValidationError):
-        CreateInterviewRequest(
-            role=Role.AI_ENGINEER,
-            difficulty=Difficulty.MEDIUM,
-            topics=["NOT_A_TOPIC"],
-            question_limit=5,
-        )
-
-
-def test_create_interview_request_fewer_than_one_topic_rejected():
-    with pytest.raises(ValidationError):
-        CreateInterviewRequest(
-            role=Role.AI_ENGINEER,
-            difficulty=Difficulty.MEDIUM,
-            topics=[],
-            question_limit=5,
-        )
-
-
-def test_create_interview_request_more_than_six_topics_rejected():
-    # Seven distinct topics, decoupled from the total size of the
-    # InterviewTopic enum (Task 16 added topics for other roles) — this
-    # only needs to exceed CreateInterviewRequest's max_length=6.
-    seven_topics = [
-        InterviewTopic.LLM_FUNDAMENTALS,
-        InterviewTopic.RAG,
-        InterviewTopic.EMBEDDINGS_VECTOR_DB,
-        InterviewTopic.AI_AGENTS,
-        InterviewTopic.LLM_EVALUATION,
-        InterviewTopic.AI_SYSTEM_DESIGN,
-        InterviewTopic.JAVASCRIPT,
-    ]
-    assert len(seven_topics) == 7
-
-    with pytest.raises(ValidationError):
-        CreateInterviewRequest(
-            role=Role.AI_ENGINEER,
-            difficulty=Difficulty.MEDIUM,
-            topics=seven_topics,
-            question_limit=5,
-        )
-
-
-def test_create_interview_request_duplicate_topics_rejected():
-    with pytest.raises(ValidationError):
-        CreateInterviewRequest(
-            role=Role.AI_ENGINEER,
-            difficulty=Difficulty.MEDIUM,
-            topics=[InterviewTopic.RAG, InterviewTopic.RAG],
-            question_limit=5,
-        )
-
-
-def test_create_interview_request_question_limit_below_minimum_rejected():
-    with pytest.raises(ValidationError):
-        CreateInterviewRequest(
-            role=Role.AI_ENGINEER,
-            difficulty=Difficulty.MEDIUM,
-            topics=[InterviewTopic.RAG],
-            question_limit=2,
-        )
-
-
-def test_create_interview_request_question_limit_above_maximum_rejected():
-    with pytest.raises(ValidationError):
-        CreateInterviewRequest(
-            role=Role.AI_ENGINEER,
-            difficulty=Difficulty.MEDIUM,
-            topics=[InterviewTopic.RAG],
-            question_limit=11,
-        )
+@pytest.mark.parametrize(
+    "extra",
+    [{"difficulty": Difficulty.MEDIUM}, {"topics": [InterviewTopic.RAG]}, {"question_limit": 5}, {"user_id": "x"}],
+)
+def test_create_interview_request_rejects_candidate_configuration_and_unknown_fields(extra):
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        CreateInterviewRequest(role=Role.AI_ENGINEER, **extra)
 
 
 # ---------------------------------------------------------------------------

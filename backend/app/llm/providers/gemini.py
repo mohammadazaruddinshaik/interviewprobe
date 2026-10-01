@@ -3,7 +3,7 @@ from typing import TypeVar
 from google import genai
 from google.genai import errors as genai_errors
 from google.genai import types as genai_types
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from app.llm.base import LLMProvider
 from app.llm.exceptions import (
@@ -80,7 +80,12 @@ class GeminiProvider(LLMProvider):
         # Pydantic model class directly; validate defensively in case a
         # dict slips through on some SDK versions.
         if not isinstance(parsed, output_schema):
-            parsed = output_schema.model_validate(parsed)
+            try:
+                parsed = output_schema.model_validate(parsed)
+            except ValidationError as exc:
+                raise LLMInvalidResponseError(
+                    f"Gemini returned a structured response that does not match {output_schema.__name__}."
+                ) from exc
         return StructuredLLMResponse(
             data=parsed, model=self.model, usage=_normalize_usage(response.usage_metadata)
         )

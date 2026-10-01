@@ -28,8 +28,9 @@ class DashboardStats(BaseModel):
 class DashboardNextInterview(BaseModel):
     id: UUID
     role: Role
-    difficulty: Difficulty
-    question_limit: int
+    # Planner-owned runtime values: null while the interview is CREATED (only internal placeholders exist).
+    difficulty: Difficulty | None
+    question_limit: int | None
     status: InterviewStatus
 
 
@@ -38,7 +39,7 @@ class DashboardRecentInterview(BaseModel):
     role: Role
     difficulty: Difficulty
     status: InterviewStatus
-    # Enum values (e.g. REST_APIS), in the order the user selected them.
+    # Enum values (e.g. REST_APIS), in the planner's order.
     topics: list[InterviewTopic]
     overall_score: float | None
     completed_at: datetime | None

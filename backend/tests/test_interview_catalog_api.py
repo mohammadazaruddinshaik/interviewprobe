@@ -1,10 +1,9 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app.domain.enums import Difficulty, InterviewTopic, Role
+from app.domain.enums import Role
 from app.domain.roles import ROLE_CATALOG
 from app.main import app
-from app.schemas.interview import CreateInterviewRequest
 from tests.auth_helpers import auth_app, sign_in
 
 URL = "/api/v1/interviews/catalog"
@@ -29,7 +28,7 @@ def test_catalog_is_public_and_uses_the_data_envelope(anonymous_client):
     assert response.status_code == 200
     body = response.json()
     assert list(body) == ["data"]
-    assert set(body["data"]) == {"roles", "difficulties", "question_limit", "topic_limit"}
+    assert set(body["data"]) == {"roles"}
 
 
 def test_catalog_is_not_shadowed_by_the_interview_id_route(anonymous_client):
@@ -47,41 +46,22 @@ def test_roles_match_the_existing_role_catalog_exactly_and_in_order(catalog):
     assert "ML_ENGINEER" not in labels
 
 
-def test_each_role_exposes_only_its_own_topics_with_catalog_labels(catalog):
+def test_each_role_exposes_only_role_information(catalog):
     for role_entry in catalog["roles"]:
-        definition = ROLE_CATALOG[Role(role_entry["value"])]
-        assert role_entry["description"] == definition.description
-        assert [t["value"] for t in role_entry["topics"]] == [t.topic.value for t in definition.topics]
-        assert [t["label"] for t in role_entry["topics"]] == [t.display_name for t in definition.topics]
-        assert [t["description"] for t in role_entry["topics"]] == [t.description for t in definition.topics]
-    by_role = {r["value"]: {t["value"] for t in r["topics"]} for r in catalog["roles"]}
-    assert "REACT" in by_role["FRONTEND_DEVELOPER"] and "REACT" not in by_role["BACKEND_DEVELOPER"]
-    assert "CORE_JAVA" not in by_role["AI_ENGINEER"]
+        assert set(role_entry) == {"value", "label", "description"}
+        assert role_entry["description"] == ROLE_CATALOG[Role(role_entry["value"])].description
 
 
-def test_difficulties_match_the_enum(catalog):
-    assert catalog["difficulties"] == [{"value": d.value} for d in Difficulty]
+def test_catalog_exposes_no_candidate_configuration(catalog):
+    # Difficulty, topics and the question ceiling are planner decisions, not candidate choices.
+    assert set(catalog) == {"roles"}
+    assert not {"difficulties", "question_limit", "topic_limit", "topics"} & set(_all_keys(catalog))
 
 
-def test_limits_match_the_creation_request_validation(catalog):
-    # Probe the real validation instead of repeating its numbers.
-    valid = {"role": "AI_ENGINEER", "difficulty": "EASY", "topics": ["RAG"]}
-    low, high = catalog["question_limit"]["min"], catalog["question_limit"]["max"]
-    CreateInterviewRequest(**valid, question_limit=low)
-    CreateInterviewRequest(**valid, question_limit=high)
-    with pytest.raises(ValueError):
-        CreateInterviewRequest(**valid, question_limit=low - 1)
-    with pytest.raises(ValueError):
-        CreateInterviewRequest(**valid, question_limit=high + 1)
-
-    t_low, t_high = catalog["topic_limit"]["min"], catalog["topic_limit"]["max"]
-    topics = list(InterviewTopic)
-    CreateInterviewRequest(role="AI_ENGINEER", difficulty="EASY", question_limit=low, topics=topics[:t_low])
-    CreateInterviewRequest(role="AI_ENGINEER", difficulty="EASY", question_limit=low, topics=topics[:t_high])
-    with pytest.raises(ValueError):
-        CreateInterviewRequest(role="AI_ENGINEER", difficulty="EASY", question_limit=low, topics=topics[: t_high + 1])
-    with pytest.raises(ValueError):
-        CreateInterviewRequest(role="AI_ENGINEER", difficulty="EASY", question_limit=low, topics=[])
+def test_internal_topic_catalog_still_serves_the_planner():
+    # The per-role topic/competency catalog is unchanged; it is just no longer candidate-facing.
+    for definition in ROLE_CATALOG.values():
+        assert definition.topics
 
 
 def _all_keys(node):
@@ -98,8 +78,7 @@ def test_response_contains_no_user_or_session_fields_and_is_cacheable(anonymous_
     response = anonymous_client.get(URL)
 
     assert set(_all_keys(response.json())) == {
-        "data", "roles", "difficulties", "question_limit", "topic_limit",
-        "value", "label", "description", "topics", "min", "max",
+        "data", "roles", "value", "label", "description",
     }
     assert "set-cookie" not in response.headers
     assert "max-age" in response.headers["cache-control"]
@@ -110,46 +89,15 @@ def test_openapi_documents_the_public_catalog_endpoint():
     operation = schema["paths"][URL]["get"]
     assert "401" not in operation["responses"]  # public
     assert "DataResponse_InterviewCatalogResponse_" in str(operation["responses"]["200"])
-    assert {"roles", "difficulties", "question_limit", "topic_limit"} <= set(
-        schema["components"]["schemas"]["InterviewCatalogResponse"]["properties"]
-    )
+    assert set(schema["components"]["schemas"]["InterviewCatalogResponse"]["properties"]) == {"roles"}
 
 
-def test_every_advertised_role_and_topic_combination_is_accepted_by_interview_creation(anonymous_client, catalog):
-    """Consistency with the real creation path: each role, created with ALL of its advertised
-    topics and the advertised minimum question limit, is accepted (one request per role, so
-    the per-client creation rate limit is not exceeded)."""
+def test_every_advertised_role_is_accepted_by_interview_creation(anonymous_client, catalog):
+    """Consistency with the real creation path: each advertised role is accepted with just a role (one
+    request per role, so the per-client creation rate limit is not exceeded)."""
     with auth_app() as (make_client, _session_factory, _redis):
         client = make_client()
         sign_in(client)
         for role_entry in catalog["roles"]:
-            response = client.post(
-                "/api/v1/interviews",
-                json={
-                    "role": role_entry["value"],
-                    "difficulty": catalog["difficulties"][0]["value"],
-                    "topics": [t["value"] for t in role_entry["topics"]],
-                    "question_limit": catalog["question_limit"]["min"],
-                },
-            )
+            response = client.post("/api/v1/interviews", json={"role": role_entry["value"]})
             assert response.status_code == 201, (role_entry["value"], response.text)
-
-
-def test_a_topic_outside_the_advertised_role_topics_is_rejected_by_creation(catalog):
-    frontend = next(r for r in catalog["roles"] if r["value"] == "FRONTEND_DEVELOPER")
-    backend_only = next(
-        t["value"]
-        for r in catalog["roles"]
-        if r["value"] == "BACKEND_DEVELOPER"
-        for t in r["topics"]
-        if t["value"] not in {x["value"] for x in frontend["topics"]}
-    )
-    with auth_app() as (make_client, _session_factory, _redis):
-        client = make_client()
-        sign_in(client)
-        response = client.post(
-            "/api/v1/interviews",
-            json={"role": "FRONTEND_DEVELOPER", "difficulty": "EASY", "topics": [backend_only], "question_limit": 5},
-        )
-    assert response.status_code == 422
-    assert response.json()["error"]["code"] == "INVALID_ROLE_TOPIC"

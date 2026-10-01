@@ -19,8 +19,8 @@ export function useRoomEntrance(phase: string, questionId: string | null) {
             .timeline({ defaults: { ease: 'power2.out', clearProps: 'all' } })
             .from(q('header'), { autoAlpha: 0, y: 10, duration: 0.4 })
             .from(q('question'), { autoAlpha: 0, y: 14, duration: 0.5 }, 0.1)
-            .from(q('composer'), { autoAlpha: 0, y: 14, duration: 0.5 }, 0.2)
-            .from(q('rail'), { autoAlpha: 0, y: 14, duration: 0.5 }, 0.3)
+            .from(q('presence'), { autoAlpha: 0, scale: 0.94, duration: 0.7 }, 0.05)
+            .from(q('controls'), { autoAlpha: 0, y: 14, duration: 0.5 }, 0.3)
         } else if (phase === 'completed') {
           gsap.from(q('completed'), { autoAlpha: 0, y: 14, duration: 0.5, ease: 'power2.out', clearProps: 'all' })
         }

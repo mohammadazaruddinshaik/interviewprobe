@@ -8,6 +8,7 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from tests.runtime_seed import create_runtime_session
 from app.db.base import Base
 from app.domain.enums import Difficulty, InterviewTopic, InterviewTopicStatus, Role
 from app.models.interview_session import InterviewSession
@@ -85,7 +86,7 @@ REQUESTED_TOPICS = [InterviewTopic.RAG, InterviewTopic.AI_AGENTS, InterviewTopic
 
 
 def create_session_with_topics(service: InterviewService, topics: list[InterviewTopic] = None) -> InterviewSession:
-    return service.create_interview(
+    return create_runtime_session(service, 
         role=Role.AI_ENGINEER,
         difficulty=Difficulty.MEDIUM,
         question_limit=5,

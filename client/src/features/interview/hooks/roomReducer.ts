@@ -7,6 +7,9 @@ export type Turn =
   | { status: 'rateLimited'; until: number; message: string }
   | { status: 'busy'; message: string }
 
+/** Shown when a refresh restores an unsent answer attempt (the spoken answer's transcript); not an error. */
+export const RESUME_NOTICE = 'Continue where you left off.'
+
 export type EndFlow = { status: 'closed' | 'confirming' | 'ending' } | { status: 'error'; message: string }
 
 export type RoomState =
@@ -16,7 +19,6 @@ export type RoomState =
       phase: 'ready'
       interview: InterviewState // server-derived
       question: Question // server-derived (lead_in only when it came from an answer response)
-      draft: string // local
       attempt: AnswerAttempt | null // local, mirrored in sessionStorage
       turn: Turn // local
       transcript: TranscriptEntry[] // local, this browser session only
@@ -27,7 +29,6 @@ export type RoomState =
 export type RoomAction =
   | { type: 'LOADED'; interview: InterviewState; question: Question; attempt: AnswerAttempt | null }
   | { type: 'PHASE'; phase: 'notFound' | 'unauthenticated' | 'loadError' | 'notStarted' | 'failed' | 'loading' }
-  | { type: 'DRAFT'; text: string }
   | { type: 'NOTICE'; message: string }
   | { type: 'SUBMIT_START'; attempt: AnswerAttempt }
   | { type: 'TURN'; turn: Turn }
@@ -45,10 +46,9 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
         phase: 'ready',
         interview: action.interview,
         question: action.question,
-        draft: pending ? pending.answer : '',
         attempt: pending,
         turn: pending
-          ? { status: 'retryable', message: 'Your last answer may not have been received. Send it again to continue.' }
+          ? { status: 'retryable', message: RESUME_NOTICE }
           : { status: 'answering', notice: null },
         transcript: [],
         endFlow: { status: 'closed' },
@@ -64,9 +64,6 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
   if (state.phase !== 'ready') return state
 
   switch (action.type) {
-    case 'DRAFT':
-      // Editing while an error is shown keeps the error (the next submit decides whether the key is reused).
-      return { ...state, draft: action.text, turn: state.turn.status === 'answering' ? { status: 'answering', notice: null } : state.turn }
     case 'NOTICE':
       return { ...state, turn: { status: 'answering', notice: action.message } }
     case 'SUBMIT_START':
@@ -77,7 +74,6 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
       return {
         ...state,
         question: action.question,
-        draft: '',
         attempt: null,
         turn: { status: 'answering', notice: null },
         transcript: [...state.transcript, action.entry],
@@ -96,14 +92,13 @@ export function roomReducer(state: RoomState, action: RoomAction): RoomState {
         ...state,
         interview: action.interview,
         question: changed ? incoming : state.question,
-        draft: changed ? '' : state.draft,
         attempt: changed ? null : state.attempt,
         turn: changed ? { status: 'answering', notice: action.notice ?? null } : state.turn,
       }
     }
     case 'DROP_ATTEMPT':
       if (state.attempt === null) return state // e.g. a SYNC to a new question already cleared it
-      return { ...state, attempt: null, turn: { status: 'answering', notice: 'We refreshed the interview. You can send your answer again.' } }
+      return { ...state, attempt: null, turn: { status: 'answering', notice: 'We refreshed your question. Please answer again.' } }
     case 'END_FLOW':
       return { ...state, endFlow: action.flow }
     default:

@@ -14,6 +14,7 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from tests.runtime_seed import create_runtime_session
 from app.db.base import Base
 from app.domain.enums import Difficulty, InterviewStatus, InterviewTopic, QuestionType, Role
 from app.evaluation.models import EvaluationResult, EvidenceItem
@@ -159,7 +160,7 @@ async def create_completed_interview(repository: InterviewRepository, question_l
     workflow = InterviewWorkflow(repository=repository, llm_provider=interview_fake_llm())
     interview_service = InterviewService(repository, workflow)
 
-    session = interview_service.create_interview(
+    session = create_runtime_session(interview_service, 
         role=Role.BACKEND_DEVELOPER, difficulty=Difficulty.MEDIUM, question_limit=question_limit,
         topics=[InterviewTopic.DATABASES],
     )
@@ -180,7 +181,7 @@ async def create_completed_interview(repository: InterviewRepository, question_l
 async def test_created_interview_is_rejected(repository: InterviewRepository):
     workflow = InterviewWorkflow(repository=repository, llm_provider=FakeLLMProvider())
     interview_service = InterviewService(repository, workflow)
-    session = interview_service.create_interview(
+    session = create_runtime_session(interview_service, 
         role=Role.BACKEND_DEVELOPER, difficulty=Difficulty.MEDIUM, question_limit=3,
         topics=[InterviewTopic.DATABASES],
     )
@@ -194,7 +195,7 @@ async def test_created_interview_is_rejected(repository: InterviewRepository):
 async def test_in_progress_interview_is_rejected(repository: InterviewRepository):
     workflow = InterviewWorkflow(repository=repository, llm_provider=interview_fake_llm())
     interview_service = InterviewService(repository, workflow)
-    session = interview_service.create_interview(
+    session = create_runtime_session(interview_service, 
         role=Role.BACKEND_DEVELOPER, difficulty=Difficulty.MEDIUM, question_limit=3,
         topics=[InterviewTopic.DATABASES],
     )
@@ -209,7 +210,7 @@ async def test_in_progress_interview_is_rejected(repository: InterviewRepository
 async def test_failed_interview_is_rejected(repository: InterviewRepository):
     workflow = InterviewWorkflow(repository=repository, llm_provider=interview_fake_llm())
     interview_service = InterviewService(repository, workflow)
-    session = interview_service.create_interview(
+    session = create_runtime_session(interview_service, 
         role=Role.BACKEND_DEVELOPER, difficulty=Difficulty.MEDIUM, question_limit=3,
         topics=[InterviewTopic.DATABASES],
     )

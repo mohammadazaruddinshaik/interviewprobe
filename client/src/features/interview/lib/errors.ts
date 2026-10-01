@@ -17,10 +17,10 @@ export const DEFAULT_RETRY_SECONDS = 10
 
 export function classifyAnswerError(error: unknown): AnswerFailure {
   if (!(error instanceof ApiError)) {
-    return { kind: 'uncertain', message: 'Something went wrong. Your answer may not have been received.' }
+    return { kind: 'uncertain', message: 'Your last answer may not have been received. We’ve kept it — send it again to continue.' }
   }
   if (error.isNetworkError) {
-    return { kind: 'uncertain', message: 'The connection dropped, so we can’t tell if your answer was received.' }
+    return { kind: 'uncertain', message: 'Your last answer may not have been received. We’ve kept it — send it again to continue.' }
   }
   switch (error.status) {
     case 401:
@@ -28,7 +28,7 @@ export function classifyAnswerError(error: unknown): AnswerFailure {
     case 404:
       return { kind: 'notFound' }
     case 409:
-      if (error.code === 'INTERVIEW_BUSY') return { kind: 'busy', message: 'The interview is busy for a moment.' }
+      if (error.code === 'INTERVIEW_BUSY') return { kind: 'busy', message: 'One moment — try again shortly.' }
       if (error.code === 'IDEMPOTENCY_KEY_REUSED') return { kind: 'keyReused' }
       return { kind: 'stale' }
     case 429:
@@ -39,11 +39,11 @@ export function classifyAnswerError(error: unknown): AnswerFailure {
       }
     case 422:
     case 400:
-      return { kind: 'invalid', message: 'That answer couldn’t be accepted. Please check it and try again.' }
+      return { kind: 'invalid', message: 'We couldn’t send that answer. Please try again.' }
     case 503:
-      return { kind: 'unavailable', message: 'The interview service is briefly unavailable.' }
+      return { kind: 'unavailable', message: 'We couldn’t reach the interview just now. Try again.' }
     default:
-      return { kind: 'uncertain', message: 'Something went wrong on our side. Your answer may not have been received.' }
+      return { kind: 'uncertain', message: 'Your last answer may not have been received. We’ve kept it — send it again to continue.' }
   }
 }
 

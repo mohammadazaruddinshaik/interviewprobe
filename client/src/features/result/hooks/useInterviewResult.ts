@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import { getInterview } from '@/features/interview/api/interviewRoomApi'
-import { getCurrentUser } from '@/lib/auth'
+import { getCurrentUser, type AuthUser } from '@/lib/auth'
 import { fetchInterviewResult } from '../api/resultApi'
 import { classifyResultError, isValidResult } from '../lib/resultErrors'
 import { resultReducer, type ResultState } from './resultReducer'
@@ -11,7 +11,7 @@ export const SLOW_AFTER_MS = 600
 export const BUSY_RETRY_MS = 3000
 export const BUSY_MAX_ATTEMPTS = 10
 
-type Outcome = { state: ResultState; userName: string | null }
+type Outcome = { state: ResultState; user: AuthUser | null }
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -24,28 +24,28 @@ async function notCompletedState(id: string): Promise<ResultState> {
 }
 
 async function loadResult(id: string): Promise<Outcome> {
-  const userPromise = getCurrentUser().then((u) => u?.name ?? null, () => null)
+  const userPromise = getCurrentUser().catch(() => null)
   for (let attempt = 1; ; attempt += 1) {
     try {
       const result = await fetchInterviewResult(id)
-      if (!isValidResult(result)) return { state: { phase: 'failed', reason: 'load' }, userName: null }
-      return { state: { phase: 'ready', result }, userName: await userPromise }
+      if (!isValidResult(result)) return { state: { phase: 'failed', reason: 'load' }, user: null }
+      return { state: { phase: 'ready', result }, user: await userPromise }
     } catch (error) {
       const failure = classifyResultError(error)
       switch (failure.kind) {
         case 'busy':
-          if (attempt >= BUSY_MAX_ATTEMPTS) return { state: { phase: 'failed', reason: 'evaluation' }, userName: null }
+          if (attempt >= BUSY_MAX_ATTEMPTS) return { state: { phase: 'failed', reason: 'evaluation' }, user: null }
           await wait(BUSY_RETRY_MS) // idempotent re-request of the same result
           continue
         case 'notCompleted':
-          return { state: await notCompletedState(id), userName: await userPromise }
+          return { state: await notCompletedState(id), user: await userPromise }
         case 'evaluationFailed':
-          return { state: { phase: 'failed', reason: 'evaluation' }, userName: null }
+          return { state: { phase: 'failed', reason: 'evaluation' }, user: null }
         case 'notFound':
         case 'unauthenticated':
-          return { state: { phase: failure.kind }, userName: null }
+          return { state: { phase: failure.kind }, user: null }
         default:
-          return { state: { phase: 'failed', reason: 'load' }, userName: null }
+          return { state: { phase: 'failed', reason: 'load' }, user: null }
       }
     }
   }
@@ -65,7 +65,7 @@ function loadOnce(id: string) {
 
 export function useInterviewResult(interviewId: string) {
   const [state, dispatch] = useReducer(resultReducer, { phase: 'loading' } as ResultState)
-  const [userName, setUserName] = useState<string | null>(null)
+  const [user, setUser] = useState<AuthUser | null>(null)
   const mounted = useRef(true)
 
   const run = useCallback(() => {
@@ -74,7 +74,7 @@ export function useInterviewResult(interviewId: string) {
     void loadOnce(interviewId).then((outcome) => {
       window.clearTimeout(slow)
       if (!mounted.current) return
-      if (outcome.userName) setUserName(outcome.userName)
+      if (outcome.user) setUser(outcome.user)
       dispatch({ type: 'OUTCOME', state: outcome.state })
     })
     return () => window.clearTimeout(slow)
@@ -89,5 +89,5 @@ export function useInterviewResult(interviewId: string) {
     }
   }, [run])
 
-  return { state, userName, retry: run }
+  return { state, user, retry: run }
 }

@@ -19,6 +19,7 @@ from app.api.deps import (
     require_owned_interview,
 )
 from app.core.config import settings
+from app.domain.enums import InterviewStatus
 from app.evaluation.service import EvaluationService
 from app.redis.client import get_redis_client
 from app.redis.exceptions import (
@@ -115,22 +116,15 @@ def create_interview(
     service: InterviewService = Depends(get_interview_service),
     _rate_limit: None = Depends(enforce_interview_creation_rate_limit),
 ) -> DataResponse[CreateInterviewResponse]:
-    session = service.create_interview(
-        role=payload.role,
-        difficulty=payload.difficulty,
-        question_limit=payload.question_limit,
-        topics=payload.topics,
-    )
-    # `topics` is echoed back from the validated request rather than
-    # re-read from the DB — the request order and the persisted
-    # sequence_number order are equal by construction (Task 10), so this
-    # remains correct while avoiding an extra query on the create path.
+    session = service.create_interview(role=payload.role)
+    # A new interview has no topics (the planner picks them at start) and its session difficulty /
+    # question_limit are internal placeholders, so none of them is reported.
     response = CreateInterviewResponse(
         id=session.id,
         role=session.role,
-        difficulty=session.difficulty,
-        topics=payload.topics,
-        question_limit=session.question_limit,
+        difficulty=None,
+        topics=[],
+        question_limit=None,
         status=session.status,
     )
     return DataResponse(data=response)
@@ -138,8 +132,8 @@ def create_interview(
 
 @router.get("/catalog", response_model=DataResponse[InterviewCatalogResponse])
 def get_interview_catalog(response: Response) -> DataResponse[InterviewCatalogResponse]:
-    """Public, read-only: the supported roles, each role's valid topics, difficulties and
-    creation limits. Static application configuration (no user data), so no session is required.
+    """Public, read-only: the supported roles. Static application configuration (no user data), so no
+    session is required. Topics, difficulty and length are planner decisions and are not exposed.
     Declared before the `/{session_id}` routes so "catalog" is never parsed as an interview id."""
     response.headers["Cache-Control"] = "public, max-age=3600"
     return DataResponse(data=build_interview_catalog())
@@ -327,6 +321,12 @@ async def _release_lock_quietly(lock: InterviewLock) -> None:
         logger.warning("Failed to release interview lock; it will expire via TTL.")
 
 
+def _planner_owned(session, value):
+    """difficulty / question_limit are planner decisions; a CREATED session only holds internal placeholders
+    (see InterviewService.create_interview), which must not be presented as real values."""
+    return None if session.status is InterviewStatus.CREATED else value
+
+
 @router.get("/{session_id}", response_model=DataResponse[InterviewResponse], dependencies=_OWNED)
 def get_interview(
     session_id: uuid.UUID,
@@ -338,9 +338,9 @@ def get_interview(
     response = InterviewResponse(
         session_id=session.id,
         role=session.role,
-        difficulty=session.difficulty,
+        difficulty=_planner_owned(session, session.difficulty),
         status=session.status,
-        question_limit=session.question_limit,
+        question_limit=_planner_owned(session, session.question_limit),
         current_topic=current_topic,
         current_question_number=session.current_question_number,
         questions_answered=questions_answered,

@@ -4,18 +4,22 @@ import uuid
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from tests.runtime_seed import create_api_interview
 from app.api.deps import get_current_user, get_claim_investigator, get_interview_planner, get_knowledge_retrieval_service, get_llm_provider
 from app.db.base import Base
 from app.db.session import get_db
-from app.domain.enums import Difficulty, InterviewTopic, QuestionType
+from app.domain.enums import Difficulty, InterviewTopic, QuestionType, Role
 from app.evaluation.models import EvaluationResult, EvidenceItem
 from app.main import app
+from app.models.interview_session import InterviewSession
+from app.repositories.interview_repository import InterviewRepository
+from app.services.interview_service import PLACEHOLDER_DIFFICULTY, PLACEHOLDER_QUESTION_LIMIT
 from app.redis.client import get_redis_client
 from app.workflows.interview.models import AnswerAnalysis, GeneratedQuestion, NextAction
 from tests.fakes import fake_current_user, FailingAsyncRedis, FakeAsyncRedis, FakeLLMProvider
@@ -144,19 +148,13 @@ def client(fake_redis: FakeAsyncRedis, fake_llm: FakeLLMProvider):
     engine.dispose()
 
 
-VALID_CREATE_PAYLOAD = {
-    "role": "AI_ENGINEER",
-    "difficulty": "MEDIUM",
-    "topics": ["RAG", "AI_AGENTS"],
-    "question_limit": 5,
-}
+# The whole public create contract.
+VALID_CREATE_PAYLOAD = {"role": "AI_ENGINEER"}
 
 
 def create_interview(client: TestClient, question_limit: int = 5) -> dict:
-    payload = {**VALID_CREATE_PAYLOAD, "question_limit": question_limit}
-    response = client.post("/api/v1/interviews", json=payload)
-    assert response.status_code == 201
-    return response.json()["data"]
+    """A CREATED interview plus the runtime state (topics RAG/AI_AGENTS, question limit) a planner would provide."""
+    return create_api_interview(client, question_limit=question_limit)
 
 
 def start_interview(client: TestClient, session_id: str) -> dict:
@@ -170,116 +168,119 @@ def start_interview(client: TestClient, session_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def _persisted_topics(session_id: str) -> list:
+    generator = app.dependency_overrides[get_db]()
+    db = next(generator)
+    try:
+        return InterviewRepository(db).get_topics(uuid.UUID(session_id))
+    finally:
+        generator.close()
+
+
 def test_create_interview_valid_returns_201(client: TestClient):
-    response = client.post("/api/v1/interviews", json=VALID_CREATE_PAYLOAD)
+    response = client.post("/api/v1/interviews", json={"role": "AI_ENGINEER"})
 
     assert response.status_code == 201
     body = response.json()
     assert "data" in body
     data = body["data"]
     assert data["role"] == "AI_ENGINEER"
-    assert data["difficulty"] == "MEDIUM"
-    assert data["topics"] == ["RAG", "AI_AGENTS"]
-    assert data["question_limit"] == 5
     assert data["status"] == "CREATED"
+    # Planner-owned: nothing is reported as if the candidate had chosen it.
+    assert data["topics"] == []
+    assert data["difficulty"] is None
+    assert data["question_limit"] is None
     uuid.UUID(data["id"])  # does not raise
 
 
+@pytest.mark.parametrize("role", [r.value for r in Role])
+def test_create_interview_accepts_every_role(client: TestClient, role: str):
+    response = client.post("/api/v1/interviews", json={"role": role})
+
+    assert response.status_code == 201
+    assert response.json()["data"]["role"] == role
+
+
 def test_create_interview_invalid_role_returns_422(client: TestClient):
-    payload = {**VALID_CREATE_PAYLOAD, "role": "NOT_A_ROLE"}
-    response = client.post("/api/v1/interviews", json=payload)
+    response = client.post("/api/v1/interviews", json={"role": "NOT_A_ROLE"})
 
     assert response.status_code == 422
 
 
-def test_create_interview_invalid_difficulty_returns_422(client: TestClient):
-    payload = {**VALID_CREATE_PAYLOAD, "difficulty": "IMPOSSIBLE"}
-    response = client.post("/api/v1/interviews", json=payload)
-
-    assert response.status_code == 422
-
-
-def test_create_interview_invalid_topics_returns_422(client: TestClient):
-    payload = {**VALID_CREATE_PAYLOAD, "topics": ["NOT_A_TOPIC"]}
-    response = client.post("/api/v1/interviews", json=payload)
-
-    assert response.status_code == 422
-
-
-def test_create_interview_invalid_question_limit_returns_422(client: TestClient):
-    payload = {**VALID_CREATE_PAYLOAD, "question_limit": 1}
-    response = client.post("/api/v1/interviews", json=payload)
-
-    assert response.status_code == 422
-
-
-# ---------------------------------------------------------------------------
-# Create — Task 17 role/topic domain validation
-# ---------------------------------------------------------------------------
+def test_create_interview_missing_role_returns_422(client: TestClient):
+    assert client.post("/api/v1/interviews", json={}).status_code == 422
 
 
 @pytest.mark.parametrize(
-    "role,topics",
+    "extra",
     [
-        ("AI_ENGINEER", ["RAG", "AI_AGENTS"]),
-        ("FRONTEND_DEVELOPER", ["JAVASCRIPT", "REACT"]),
-        ("BACKEND_DEVELOPER", ["REST_APIS", "DATABASES"]),
-        ("JAVA_DEVELOPER", ["CORE_JAVA", "COLLECTIONS"]),
+        {"difficulty": "MEDIUM"},
+        {"topics": ["RAG"]},
+        {"question_limit": 5},
+        {"difficulty": "MEDIUM", "topics": ["RAG", "AI_AGENTS"], "question_limit": 5},
     ],
 )
-def test_create_interview_accepts_role_appropriate_topics(
-    client: TestClient, role: str, topics: list[str]
-):
-    payload = {**VALID_CREATE_PAYLOAD, "role": role, "topics": topics}
-    response = client.post("/api/v1/interviews", json=payload)
-
-    assert response.status_code == 201
-    assert response.json()["data"]["topics"] == topics
-
-
-@pytest.mark.parametrize(
-    "role,topics",
-    [
-        ("BACKEND_DEVELOPER", ["REACT"]),
-        ("FRONTEND_DEVELOPER", ["DATABASES"]),
-        ("JAVA_DEVELOPER", ["RAG"]),
-    ],
-)
-def test_create_interview_rejects_role_inappropriate_topics(
-    client: TestClient, role: str, topics: list[str]
-):
-    payload = {**VALID_CREATE_PAYLOAD, "role": role, "topics": topics}
-    response = client.post("/api/v1/interviews", json=payload)
+def test_create_interview_rejects_candidate_configuration_with_422(client: TestClient, extra: dict):
+    response = client.post("/api/v1/interviews", json={"role": "AI_ENGINEER", **extra})
 
     assert response.status_code == 422
-    error = response.json()["error"]
-    assert error["code"] == "INVALID_ROLE_TOPIC"
-    assert "message" in error
+    assert "data" not in response.json()
 
 
-def test_create_interview_invalid_role_topic_does_not_persist_a_session(client: TestClient):
-    payload = {**VALID_CREATE_PAYLOAD, "role": "BACKEND_DEVELOPER", "topics": ["REACT"]}
-    response = client.post("/api/v1/interviews", json=payload)
-    assert response.status_code == 422
+def test_rejected_create_persists_no_session(client: TestClient):
+    client.post("/api/v1/interviews", json={"role": "AI_ENGINEER", "topics": ["RAG"]})
 
-    # No session id was ever returned, and there is no list endpoint to
-    # probe with — instead confirm a request for a random id behaves
-    # exactly like "never existed" (404, not some other state), which is
-    # the observable behavior consistent with nothing having persisted.
-    response_body = response.json()
-    assert "data" not in response_body
+    generator = app.dependency_overrides[get_db]()
+    db = next(generator)
+    try:
+        assert db.execute(select(InterviewSession)).scalars().all() == []
+    finally:
+        generator.close()
 
 
-def test_create_interview_topics_preserve_candidate_selected_order(client: TestClient):
-    payload = {
-        **VALID_CREATE_PAYLOAD,
-        "role": "BACKEND_DEVELOPER",
-        "topics": ["DATABASES", "REST_APIS", "CACHING"],
-    }
-    response = client.post("/api/v1/interviews", json=payload)
+def test_created_interview_has_no_topic_rows(client: TestClient):
+    created = client.post("/api/v1/interviews", json={"role": "BACKEND_DEVELOPER"}).json()["data"]
 
-    assert response.status_code == 201
-    assert response.json()["data"]["topics"] == ["DATABASES", "REST_APIS", "CACHING"]
+    assert _persisted_topics(created["id"]) == []
+
+
+def test_created_session_holds_only_internal_placeholders(client: TestClient):
+    created = client.post("/api/v1/interviews", json={"role": "AI_ENGINEER"}).json()["data"]
+
+    generator = app.dependency_overrides[get_db]()
+    db = next(generator)
+    try:
+        session = InterviewRepository(db).get_session(uuid.UUID(created["id"]))
+        assert session.difficulty is PLACEHOLDER_DIFFICULTY
+        assert session.question_limit == PLACEHOLDER_QUESTION_LIMIT
+    finally:
+        generator.close()
+
+
+def test_get_created_interview_reports_no_candidate_configuration(client: TestClient):
+    created = client.post("/api/v1/interviews", json={"role": "AI_ENGINEER"}).json()["data"]
+
+    response = client.get(f"/api/v1/interviews/{created['id']}")
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["status"] == "CREATED"
+    assert data["topics"] == []
+    assert data["difficulty"] is None
+    assert data["question_limit"] is None
+    assert data["current_topic"] is None
+    assert data["current_question"] is None
+
+
+def test_get_started_interview_reports_the_runtime_values(client: TestClient):
+    created = create_interview(client, question_limit=4)
+    start_interview(client, created["id"])
+
+    data = client.get(f"/api/v1/interviews/{created['id']}").json()["data"]
+
+    assert data["difficulty"] == "MEDIUM"
+    assert data["question_limit"] == 4
+    assert [t["topic"] for t in data["topics"]] == ["RAG", "AI_AGENTS"]
 
 
 # ---------------------------------------------------------------------------
@@ -830,12 +831,7 @@ def test_start_interview_redis_state_reflects_the_actual_first_selected_topic(
     # Task 17: a Frontend interview's mirrored runtime state must carry
     # the real first selected topic (REACT here), not the AI Engineer
     # placeholder this same fixture used to hardcode.
-    payload = {
-        **VALID_CREATE_PAYLOAD,
-        "role": "FRONTEND_DEVELOPER",
-        "topics": ["REACT", "JAVASCRIPT"],
-    }
-    created = client.post("/api/v1/interviews", json=payload).json()["data"]
+    created = create_api_interview(client, role="FRONTEND_DEVELOPER", topics=["REACT", "JAVASCRIPT"])
 
     start_interview(client, created["id"])
 

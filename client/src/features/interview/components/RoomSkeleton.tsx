@@ -1,14 +1,24 @@
-const pulse = 'animate-pulse rounded-2xl bg-ink/[0.07] motion-reduce:animate-none'
+const bar = 'animate-pulse rounded-md bg-cream/[0.08] motion-reduce:animate-none'
 
-/** Layout-preserving placeholder while the interview state loads. */
+/** Mirrors the voice room's geometry (header, presence, question lines, primary control) so nothing jumps on load. */
 function RoomSkeleton() {
   return (
-    <div role="status" aria-label="Loading interview" className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_280px] xl:grid-cols-[minmax(0,1fr)_320px]">
-      <div className="flex flex-col gap-6">
-        <div className={`h-[148px] ${pulse}`} />
-        <div className={`h-[260px] ${pulse}`} />
+    <div role="status" aria-label="Loading interview" className="relative min-h-[100dvh] bg-[#06110a]">
+      <div aria-hidden="true">
+        <div className="mx-auto flex h-14 max-w-[1100px] items-center justify-between px-4 sm:px-6">
+          <div className={`h-4 w-32 ${bar}`} />
+          <div className={`h-4 w-40 ${bar}`} />
+        </div>
+        <div className="mx-auto flex max-w-[760px] flex-col items-center px-5 pt-8">
+          <div className="size-[184px] animate-pulse rounded-full bg-cream/[0.06] motion-reduce:animate-none sm:size-[232px]" />
+          <div className="mt-10 flex w-full flex-col items-center gap-3">
+            <div className={`h-3 w-24 ${bar}`} />
+            <div className={`h-7 w-full sm:h-8 ${bar}`} />
+            <div className={`h-7 w-[78%] sm:h-8 ${bar}`} />
+          </div>
+          <div className={`mt-10 h-[54px] w-44 rounded-xl ${bar}`} />
+        </div>
       </div>
-      <div className={`h-[220px] max-lg:hidden ${pulse}`} />
     </div>
   )
 }

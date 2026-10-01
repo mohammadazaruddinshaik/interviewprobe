@@ -9,16 +9,32 @@ The prompt/data boundary is explicit throughout.
 
 from app.domain.enums import CompetencyRequirement, ResumeRelevance
 from app.llm.models import LLMMessage
-from app.planning.models import InterviewPlanningInput, PlanningResumeClaim
+from app.planning.models import (
+    PLAN_MAX_QUESTIONS,
+    PLAN_MAX_TOPICS,
+    PLAN_MIN_QUESTIONS,
+    PLAN_MIN_TOPICS,
+    InterviewPlanningInput,
+    PlanningResumeClaim,
+)
 
-_SYSTEM_PROMPT = """\
+_SYSTEM_PROMPT_TEMPLATE = """\
 You are planning a professional technical interview.
 
+The candidate has chosen only their role and (optionally) supplied a resume. \
+The candidate does NOT choose interview topics, difficulty, or question count — \
+you decide all of them, from the role's full competency catalog.
+
 Your job is to decide:
-- which competency areas should be covered
-- which topics deserve more or less emphasis
-- which resume claims are worth investigating during the interview
-- how to allocate the available interview time
+- breadth: how many topics to cover
+- topic selection, priority and order
+- approximate time allocation per topic
+- starting_difficulty (EASY, MEDIUM or HARD) — where the interview should begin; \
+later questions adapt to the candidate's answers. Use the resume (seniority, \
+depth of experience) when present and the role's nature otherwise; when unsure, \
+start at MEDIUM
+- max_questions — the maximum number of questions the interview may ask
+- which resume claims are worth investigating, where resume data exists
 
 Your job is NOT to:
 - generate interview questions
@@ -54,10 +70,17 @@ claims relate to — but never let resume discussion replace core role coverage.
 - Leave room for natural adaptive follow-ups — do not micro-schedule every minute.
 - The total suggested_time_budget_minutes across all topics must not \
 exceed the max_duration_minutes constraint.
-- The question_limit constrains overall interview breadth, but do NOT \
-create one topic per question mechanically. A plan may have fewer topics \
-than the question limit because some topics receive multiple adaptive \
-questions later.
+- The only hard wall-clock constraint is max_duration_minutes.
+- max_questions is a SAFETY CEILING, not a target or a promise. The actual \
+interview length is adaptive and may end earlier. Choose it between {min_q} and {max_q}, \
+and never below the number of topics you plan (every topic needs at least one question). \
+Do NOT create one topic per question mechanically; some topics will receive \
+multiple adaptive questions.
+- Plan between {min_t} and {max_t} topics. Every REQUIRED competency in the \
+catalog must appear in the competency_keys of some planned topic; OPTIONAL \
+competencies may be skipped when time is short.
+- Use only topics and competency keys from the catalog, each key under the \
+topic it is listed with, and never repeat a topic.
 - Produce realistic integer minute allocations for each topic.
 
 For each planned topic, set resume_relevance to:
@@ -72,6 +95,10 @@ the input — never invent claim IDs.
 Objectives should describe the intended assessment goals for this \
 specific interview, not generic statements.
 """
+
+_SYSTEM_PROMPT = _SYSTEM_PROMPT_TEMPLATE.format(
+    min_q=PLAN_MIN_QUESTIONS, max_q=PLAN_MAX_QUESTIONS, min_t=PLAN_MIN_TOPICS, max_t=PLAN_MAX_TOPICS
+)
 
 
 def _format_competencies(planning_input: InterviewPlanningInput) -> str:
@@ -148,9 +175,7 @@ def build_planning_messages(planning_input: InterviewPlanningInput) -> list[LLMM
         f"claim_id you may reference in related_claim_ids):\n"
         f"{_format_claims(planning_input.resume_claims)}\n\n"
         f"CONSTRAINTS:\n"
-        f"  max_duration_minutes: {constraints.max_duration_minutes}\n"
-        f"  difficulty: {constraints.difficulty.value}\n"
-        f"  question_limit: {constraints.question_limit}\n\n"
+        f"  max_duration_minutes: {constraints.max_duration_minutes}\n\n"
         f"Produce a structured InterviewPlan for role {planning_input.role.value}."
     )
 

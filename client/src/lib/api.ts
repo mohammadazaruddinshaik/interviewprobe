@@ -43,7 +43,7 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
     response = await fetch(`${API_BASE_URL}${path}`, {
       ...init,
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', ...init.headers },
+      headers: init.body instanceof FormData ? init.headers : { 'Content-Type': 'application/json', ...init.headers },
     })
   } catch {
     // fetch rejects (TypeError) when no response arrives. For a request that may already have been applied
@@ -59,4 +59,24 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
     throw new ApiError(response.status, error?.code ?? null, error?.message ?? response.statusText, parseRetryAfter(response))
   }
   return (body?.data ?? body) as T
+}
+
+/** Like `apiRequest`, but for endpoints that answer with binary data (e.g. synthesized speech). */
+export async function apiRequestBlob(path: string, init: RequestInit = {}): Promise<Blob> {
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', ...init.headers },
+    })
+  } catch {
+    throw new ApiError(0, NETWORK_ERROR_CODE, 'The connection to InterviewProbe was interrupted.')
+  }
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    const error = body?.error
+    throw new ApiError(response.status, error?.code ?? null, error?.message ?? response.statusText, parseRetryAfter(response))
+  }
+  return response.blob()
 }

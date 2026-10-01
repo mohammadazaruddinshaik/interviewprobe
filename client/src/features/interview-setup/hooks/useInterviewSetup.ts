@@ -5,18 +5,11 @@ import {
   createInterview,
   fetchInterviewCatalog,
   startInterview,
-  type CatalogRole,
+  uploadResume,
   type InterviewCatalog,
 } from '../api/interviewApi'
-import { DEFAULT_DIFFICULTY, DEFAULT_QUESTION_LIMIT, DEFAULT_TOPIC_COUNT } from '../lib/copy'
-import { describeSubmitFailure } from '../lib/submitErrors'
-
-export interface SetupSelection {
-  role: string
-  difficulty: string
-  topics: string[]
-  questionLimit: number
-}
+import { describeResumeFailure, describeSubmitFailure, isAlreadyStarted, RESUME_FAILED_MESSAGE } from '../lib/submitErrors'
+import { fileKey, validateResumeFile } from '../lib/resumeFile'
 
 type LoadState =
   | { status: 'loading' }
@@ -27,31 +20,16 @@ type LoadState =
 export type SubmitState =
   | { status: 'idle' }
   | { status: 'creating' }
+  | { status: 'uploading' }
   | { status: 'starting' }
   | { status: 'error'; message: string }
-
-const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
-
-/** Only the first `count` topics of a role, never more than the role has. */
-const defaultTopics = (role: CatalogRole) => role.topics.slice(0, DEFAULT_TOPIC_COUNT).map((t) => t.value)
-
-function initialSelection(catalog: InterviewCatalog): SetupSelection {
-  const role = catalog.roles[0]
-  const difficulties = catalog.difficulties.map((d) => d.value)
-  return {
-    role: role.value,
-    difficulty: difficulties.includes(DEFAULT_DIFFICULTY) ? DEFAULT_DIFFICULTY : difficulties[0],
-    topics: defaultTopics(role),
-    questionLimit: clamp(DEFAULT_QUESTION_LIMIT, catalog.question_limit.min, catalog.question_limit.max),
-  }
-}
 
 async function loadCatalogAndUser(): Promise<LoadState> {
   try {
     // The catalog is public; /auth/me decides whether this screen may be used at all.
     const [catalog, user] = await Promise.all([fetchInterviewCatalog(), getCurrentUser()])
     if (!user) return { status: 'unauthenticated' }
-    if (catalog.roles.length === 0 || catalog.difficulties.length === 0) return { status: 'error' }
+    if (catalog.roles.length === 0) return { status: 'error' }
     return { status: 'ready', catalog, user }
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) return { status: 'unauthenticated' }
@@ -68,16 +46,20 @@ export const interviewDestination = (id: string) => `/app/interviews/${encodeURI
 
 export function useInterviewSetup() {
   const [load, setLoad] = useState<LoadState>({ status: 'loading' })
-  const [selection, setSelection] = useState<SetupSelection | null>(null)
+  // The only things the candidate controls: a role (defaults to the first in the catalog) and an optional resume.
+  const [roleValue, setRoleValue] = useState<string | null>(null)
   const [submit, setSubmit] = useState<SubmitState>({ status: 'idle' })
   const [signedOut, setSignedOut] = useState(false)
+  const [resume, setResume] = useState<File | null>(null)
+  const [resumeError, setResumeError] = useState<string | null>(null)
 
   const submittingRef = useRef(false) // blocks duplicate clicks synchronously
-  const createdRef = useRef<{ key: string; id: string } | null>(null) // a created interview survives a failed start
+  const createdRef = useRef<{ key: string; id: string } | null>(null) // a created interview survives a failed upload/start
+  const uploadedRef = useRef<{ id: string; file: string } | null>(null) // a READY resume is never uploaded twice
 
   const applyLoad = useCallback((result: LoadState) => {
     setLoad(result)
-    if (result.status === 'ready') setSelection((current) => current ?? initialSelection(result.catalog))
+    if (result.status === 'ready') setRoleValue((current) => current ?? result.catalog.roles[0].value)
   }, [])
 
   useEffect(() => {
@@ -96,92 +78,91 @@ export function useInterviewSetup() {
   }, [applyLoad])
 
   const catalog = load.status === 'ready' ? load.catalog : null
-  const role = catalog && selection ? catalog.roles.find((r) => r.value === selection.role) : undefined
-  const topicCap = catalog && role ? Math.min(catalog.topic_limit.max, role.topics.length) : 0
-  const busy = submit.status === 'creating' || submit.status === 'starting'
-
-  const update = useCallback((change: (current: SetupSelection) => SetupSelection) => {
-    if (submittingRef.current) return
-    setSelection((current) => (current ? change(current) : current))
-    setSubmit((s) => (s.status === 'error' ? { status: 'idle' } : s))
-  }, [])
+  const role = catalog && roleValue ? catalog.roles.find((r) => r.value === roleValue) : undefined
+  const busy = submit.status === 'creating' || submit.status === 'uploading' || submit.status === 'starting'
 
   const selectRole = useCallback(
     (value: string) => {
-      if (!catalog) return
-      const next = catalog.roles.find((r) => r.value === value)
-      if (!next) return
-      update((current) => {
-        // Keep only topics valid for the new role; if none survive, fall back to its first topics.
-        const valid = new Set(next.topics.map((t) => t.value))
-        const kept = current.topics.filter((t) => valid.has(t)).slice(0, catalog.topic_limit.max)
-        return { ...current, role: value, topics: kept.length > 0 ? kept : defaultTopics(next) }
-      })
+      if (submittingRef.current || !catalog?.roles.some((r) => r.value === value)) return
+      setRoleValue(value)
+      setSubmit((s) => (s.status === 'error' ? { status: 'idle' } : s))
     },
-    [catalog, update],
+    [catalog],
   )
 
-  const toggleTopic = useCallback(
-    (value: string) => {
-      update((current) => {
-        if (current.topics.includes(value)) return { ...current, topics: current.topics.filter((t) => t !== value) }
-        if (current.topics.length >= topicCap || !role?.topics.some((t) => t.value === value)) return current
-        return { ...current, topics: [...current.topics, value] }
-      })
-    },
-    [role, topicCap, update],
-  )
+  const chooseResume = useCallback((file: File | null) => {
+    if (submittingRef.current) return
+    const problem = file ? validateResumeFile(file) : null
+    setResumeError(problem)
+    if (!problem) setResume(file)
+    setSubmit((s) => (s.status === 'error' ? { status: 'idle' } : s))
+  }, [])
 
-  const selectDifficulty = useCallback((difficulty: string) => update((c) => ({ ...c, difficulty })), [update])
-  const selectQuestionLimit = useCallback((questionLimit: number) => update((c) => ({ ...c, questionLimit })), [update])
-
-  const canSubmit = !!catalog && !!selection && selection.topics.length >= catalog.topic_limit.min && !busy
+  const canSubmit = !!role && !busy
 
   const submitSetup = useCallback(async () => {
-    if (!catalog || !selection || submittingRef.current) return
-    if (selection.topics.length < catalog.topic_limit.min) return
+    if (!role || submittingRef.current) return
     submittingRef.current = true
-    const key = JSON.stringify(selection)
+    const key = role.value
     try {
       let id = createdRef.current?.key === key ? createdRef.current.id : null
       if (!id) {
         setSubmit({ status: 'creating' })
-        id = (
-          await createInterview({
-            role: selection.role,
-            difficulty: selection.difficulty,
-            topics: selection.topics,
-            question_limit: selection.questionLimit,
-          })
-        ).id
+        const created = await createInterview({ role: role.value })
+        if (typeof created?.id !== 'string' || !created.id) throw new Error('Create response had no interview id.')
+        id = created.id
         createdRef.current = { key, id }
       }
+      // Optional resume: uploaded AFTER creation and BEFORE start (the planner reads it once, at start).
+      if (resume && !(uploadedRef.current?.id === id && uploadedRef.current.file === fileKey(resume))) {
+        setSubmit({ status: 'uploading' })
+        let result
+        try {
+          result = await uploadResume(id, resume)
+        } catch (error) {
+          const failure = describeResumeFailure(error)
+          if (failure.kind === 'unauthenticated') setSignedOut(true)
+          else setSubmit({ status: 'error', message: failure.message })
+          submittingRef.current = false
+          return // never start after a failed upload
+        }
+        if (result.status !== 'READY') {
+          setSubmit({ status: 'error', message: RESUME_FAILED_MESSAGE })
+          submittingRef.current = false
+          return
+        }
+        uploadedRef.current = { id, file: fileKey(resume) }
+      }
       setSubmit({ status: 'starting' })
-      await startInterview(id)
-      window.location.assign(interviewDestination(id)) // only after BOTH calls succeeded
+      try {
+        await startInterview(id)
+      } catch (error) {
+        // A start whose response was lost may have succeeded server-side; the retry then sees the interview as
+        // already started. The room fetches the authoritative state, so hand off instead of failing.
+        if (!isAlreadyStarted(error)) throw error
+      }
+      window.location.assign(interviewDestination(id)) // only after the interview exists and was started
     } catch (error) {
       const failure = describeSubmitFailure(error)
       if (failure.kind === 'unauthenticated') setSignedOut(true)
       else setSubmit({ status: 'error', message: failure.message })
       submittingRef.current = false
     }
-  }, [catalog, selection])
+  }, [role, resume])
 
   return {
     status: signedOut ? ('unauthenticated' as const) : load.status,
     user: load.status === 'ready' ? load.user : null,
     catalog,
-    selection,
     role,
-    topicCap,
     submit,
     busy,
     canSubmit,
     retryLoad,
     selectRole,
-    selectDifficulty,
-    toggleTopic,
-    selectQuestionLimit,
+    resume,
+    resumeError,
+    chooseResume,
     submitSetup,
   }
 }
