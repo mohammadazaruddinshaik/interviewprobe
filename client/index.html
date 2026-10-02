@@ -2,11 +2,24 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="client/public/assets/landing/logo.png" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@800&display=swap" rel="stylesheet" />
+    <script>
+      // Landing only: start the hero download before the JS bundle has rendered it.
+      if (location.pathname === '/') {
+        var l = document.createElement('link')
+        l.rel = 'preload'
+        l.as = 'image'
+        l.type = 'image/webp'
+        l.href = '/assets/landing/hero-1600.webp'
+        l.setAttribute('imagesrcset', '/assets/landing/hero-960.webp 960w, /assets/landing/hero-1600.webp 1600w')
+        l.setAttribute('imagesizes', '(max-width: 767px) 190vw, 1212px')
+        document.head.appendChild(l)
+      }
+    </script>
     <title>InterviewProbe</title>
   </head>
   <body>

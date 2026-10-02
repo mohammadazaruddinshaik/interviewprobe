@@ -57,10 +57,12 @@ function FeaturesSection() {
 
         <div className="relative mx-auto aspect-[1075/885] w-full max-w-[640px] overflow-hidden [-webkit-mask-composite:source-in] [-webkit-mask-image:linear-gradient(to_right,transparent,#000_22px,#000_calc(100%-22px),transparent),linear-gradient(to_bottom,transparent,#000_22px,#000_calc(100%-22px),transparent)] [mask-composite:intersect] [mask-image:linear-gradient(to_right,transparent,#000_22px,#000_calc(100%-22px),transparent),linear-gradient(to_bottom,transparent,#000_22px,#000_calc(100%-22px),transparent)] lg:max-w-none">
           <img
-            src="/assets/landing/adaptive-interview-flow.png"
+            src="/assets/landing/adaptive-interview-flow-1280.webp"
+            srcSet="/assets/landing/adaptive-interview-flow-800.webp 800w, /assets/landing/adaptive-interview-flow-1280.webp 1280w"
+            sizes="(max-width: 1023px) 95vw, 944px"
             alt="An adaptive interview flow: a question, the candidate's answer, an AI probe that digs into the answer, and a deeper follow-up question."
-            width={1586}
-            height={992}
+            width={1280}
+            height={801}
             loading="lazy"
             decoding="async"
             className="absolute -left-[26.5%] -top-[4.5%] h-auto w-[147.5%] max-w-none"

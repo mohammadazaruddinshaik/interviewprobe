@@ -3,6 +3,7 @@ import { Menu, X } from 'lucide-react'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { useGSAP } from '@gsap/react'
+import { hideOnError } from '@/lib/image'
 
 gsap.registerPlugin(useGSAP, ScrollTrigger)
 
@@ -73,8 +74,12 @@ function Navigation() {
             aria-label="InterviewProbe home"
           >
             <img
-              src="/assets/landing/logo.png"
+              src="/assets/landing/logo-510.webp"
               alt="InterviewProbe"
+              width={510}
+              height={190}
+              decoding="async"
+              onError={hideOnError}
               className="absolute -left-[32px] -top-[27px] h-[95px] w-[255px] max-w-none"
             />
           </a>

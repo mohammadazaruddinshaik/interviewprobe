@@ -1,17 +1,21 @@
 import { ArrowRight, Sparkles } from 'lucide-react'
+import { hideOnError } from '@/lib/image'
 import PaintHighlight from './PaintHighlight'
 
 const PAPERS = [
   {
-    src: '/assets/landing/papers/paper-left.png',
+    src: '/assets/landing/papers/paper-left-300.webp',
+    height: 342,
     className: 'left-[calc(50%-554px)] top-[109px] w-[99px] [transform:rotate(30deg)]',
   },
   {
-    src: '/assets/landing/papers/paper-center.png',
+    src: '/assets/landing/papers/paper-center-300.webp',
+    height: 338,
     className: 'left-[calc(50%-494px)] top-[252px] w-[150px] [transform:rotate(-57deg)]',
   },
   {
-    src: '/assets/landing/papers/paper-right.png',
+    src: '/assets/landing/papers/paper-right-300.webp',
+    height: 351,
     className: 'left-[calc(50%+443px)] top-[261px] w-[109px] [transform:rotate(8deg)]',
   },
 ]
@@ -25,6 +29,11 @@ function Hero() {
           src={paper.src}
           alt=""
           aria-hidden="true"
+          width={300}
+          height={paper.height}
+          loading="lazy"
+          decoding="async"
+          onError={hideOnError}
           data-anim="hero-paper"
           className={`pointer-events-none absolute hidden h-auto max-w-none select-none xl:block ${paper.className}`}
         />
@@ -77,7 +86,15 @@ function Hero() {
         <div data-anim="hero-image" className="mt-[22px] w-full rounded-[26px] bg-orange p-[14px] max-md:rounded-2xl max-md:p-2">
           <div className="relative aspect-[1026/268] w-full overflow-hidden rounded-[15px] max-md:aspect-[16/10] max-md:rounded-lg">
             <img
-              src="/assets/landing/hero.png"
+              src="/assets/landing/hero-1600.webp"
+              srcSet="/assets/landing/hero-960.webp 960w, /assets/landing/hero-1600.webp 1600w"
+              sizes="(max-width: 767px) 190vw, 1212px"
+              width={1600}
+              height={611}
+              loading="eager"
+              fetchPriority="high"
+              decoding="async"
+              onError={hideOnError}
               alt="A software engineer speaking during a recorded interview practice session"
               className="absolute -left-[4%] -top-[15.7%] h-auto w-[118.1%] max-w-none max-md:left-[-16%] max-md:top-[-6%] max-md:w-[190%]"
             />

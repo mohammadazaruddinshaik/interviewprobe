@@ -3,6 +3,7 @@ import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { useGSAP } from '@gsap/react'
 import { ArrowRight, ArrowUpRight } from 'lucide-react'
+import { hideOnError } from '@/lib/image'
 
 gsap.registerPlugin(useGSAP, ScrollTrigger)
 
@@ -124,8 +125,13 @@ function Footer() {
             <a href="#top" className="inline-flex items-center gap-[13px]" aria-label="InterviewProbe home">
               <span className="relative block h-[40px] w-[40px] shrink-0 overflow-hidden">
                 <img
-                  src="/assets/landing/logo.png"
+                  src="/assets/landing/logo-510.webp"
                   alt=""
+                  width={510}
+                  height={190}
+                  loading="lazy"
+                  decoding="async"
+                  onError={hideOnError}
                   className="absolute -left-[32px] -top-[27px] h-[95px] w-[255px] max-w-none"
                 />
               </span>

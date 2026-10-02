@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { hideOnError } from '@/lib/image'
 import { ApiError } from '@/lib/api'
 import { usePageEntrance } from '@/features/app/hooks/usePageEntrance'
 import { getCurrentUser, signInWithGoogle } from '@/lib/auth'
@@ -98,7 +99,7 @@ function SignInPage() {
     <main ref={scope} className="relative min-h-screen overflow-hidden bg-cream text-ink lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
       <section className="relative flex flex-col justify-center gap-10 px-6 pb-10 pt-8 sm:px-12 lg:gap-9 lg:px-16 lg:py-10">
         <a data-enter="" href="/" aria-label="InterviewProbe home" className="relative block h-[38px] w-[196px] overflow-hidden rounded-sm outline-offset-4 focus-visible:outline-[3px] focus-visible:outline-yellow">
-          <img src="/assets/landing/logo.png" alt="InterviewProbe" className="absolute -left-[32px] -top-[27px] h-[95px] w-[255px] max-w-none" />
+          <img src="/assets/landing/logo-510.webp" alt="InterviewProbe" width={510} height={190} decoding="async" onError={hideOnError} className="absolute -left-[32px] -top-[27px] h-[95px] w-[255px] max-w-none" />
         </a>
         <div data-enter="" className="max-w-[560px]">
           <span aria-hidden="true" className="mb-6 block h-[2px] w-10 bg-orange" />

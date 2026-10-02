@@ -132,10 +132,12 @@ function HowItWorksSection() {
           <div data-hiw="parallax">
             <div className="overflow-hidden rounded-[20px] shadow-[0_24px_48px_-28px_rgb(20_42_11/0.45)] md:rounded-[26px]">
               <img
-                src="/assets/landing/how-it-works.png"
+                src="/assets/landing/how-it-works-1280.webp"
+                srcSet="/assets/landing/how-it-works-640.webp 640w, /assets/landing/how-it-works-1280.webp 1280w"
+                sizes="(max-width: 1023px) 92vw, 640px"
                 alt="A candidate in a mock interview beside four floating cards: choose your target, get your interview plan, get probed, and understand your performance."
-                width={1536}
-                height={1024}
+                width={1280}
+                height={853}
                 loading="lazy"
                 decoding="async"
                 className="h-auto w-full"
